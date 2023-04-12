@@ -55,6 +55,11 @@ trap(struct trapframe *tf)
       release(&tickslock);
     }
     lapiceoi();
+
+    if(myproc() && myproc()->state == RUNNING && tf->trapno == T_IRQ0+IRQ_TIMER) {
+      myproc()->time_allotment++; // time_allotment 증가
+    }
+    
     break;
   case T_IRQ0 + IRQ_IDE:
     ideintr();

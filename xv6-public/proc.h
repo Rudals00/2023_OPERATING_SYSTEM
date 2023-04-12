@@ -49,7 +49,14 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  int level;                   // 프로세스의 레벨
+  int priority;                //level 2에서 사용되는 프로세스의 우선순위
+  int time_quantum;            //프로세스의 time quantum
+  int time_allotment;          //프로세스가 현재 얼마나 실행되었는지
+  struct proc *next;            //다음 프로세스를 가리키는 포인터
 };
+
+struct proc *level_queue[3]; // 각 큐의 헤드
 
 // Process memory is laid out contiguously, low addresses first:
 //   text

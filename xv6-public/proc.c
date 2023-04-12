@@ -65,6 +65,48 @@ myproc(void) {
   return p;
 }
 
+void enqueue(struct proc *p, struct proc **queue) {
+  if (*queue == 0) {
+    // 큐가 비어있으면 프로세스를 큐의 첫 번째 요소로 추가
+    *queue = p;
+    p->next = 0;
+  } else {
+    struct proc *tmp = *queue;
+    // 큐의 마지막 요소를 찾음
+    while (tmp->next) {
+      tmp = tmp->next;
+    }
+
+
+    // 마지막 요소 다음에 프로세스를 추가
+    tmp->next = p;
+    p->next = 0;
+
+    // cprintf("pid : %d, pid2 : %d\n", tmp->pid, p->pid);
+    // cprintf("----\n\n");
+    // while (tmp) {
+    //   cprintf("pid: %d\n", tmp->pid);
+    //   tmp = tmp->next;
+    // }
+    
+
+  }
+}
+
+struct proc *dequeue(struct proc **queue) {
+  if (*queue == 0) {
+    // 큐가 비어있으면 NULL 반환
+    return 0;
+  } else {
+    struct proc *dequeued_proc = *queue;
+    // 큐의 첫 번째 요소를 제거하고 두 번째 요소를 첫 번째 요소로 설정
+    *queue = (*queue)->next;
+    dequeued_proc->next = 0;
+    return dequeued_proc;
+  }
+}
+
+
 //PAGEBREAK: 32
 // Look in the process table for an UNUSED proc.
 // If found, change state to EMBRYO and initialize
@@ -88,6 +130,13 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+
+  //mlfq 관련 초기화
+  p->level = 0;
+  p->priority = 3;
+  p->time_quantum = 2 * p->level +4;
+  p->time_allotment = 0;
+  p->next = 0;
 
   release(&ptable.lock);
 
@@ -149,6 +198,7 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
+  enqueue(p, &level_queue[p->level]);
 
   release(&ptable.lock);
 }
@@ -215,6 +265,7 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
+  enqueue(np, &level_queue[np->level]);
 
   release(&ptable.lock);
 
@@ -322,7 +373,7 @@ wait(void)
 void
 scheduler(void)
 {
-  struct proc *p;
+  struct proc *p = 0;
   struct cpu *c = mycpu();
   c->proc = 0;
   
@@ -332,25 +383,75 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
 
+    
+    for(int level = 0; level < 3; level++) {
+      if (level_queue[level] == 0) {
+        continue;
+      }
+
+      p = dequeue(&level_queue[level]);
+      break;
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
-
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
+      if (p->state != RUNNABLE) {
+    // If not, continue with the next iteration of the loop
+        continue;
+      }
     }
+
+    if(p == 0) {
+      release(&ptable.lock);
+      continue;
+    }
+
+    c->proc = p;
+    switchuvm(p);
+    p->state = RUNNING;
+
+    swtch(&(c->scheduler), p->context);
+    switchkvm();
+
+    // Process is done running for now.
+    // It should have changed its p->state before coming back.
+    c->proc = 0;
+
+    // 레벨 변경이 필요한 경우
+    if (p->level < 2 && p->time_allotment >= p->time_quantum) {
+      p->level++;
+      p->time_quantum = 2 * p->level + 4;
+      p->time_allotment = 0;
+    } else if (p->level == 2 && p->time_allotment >= p->time_quantum) {
+      p->priority = (p->priority - 1 >= 0) ? p->priority - 1 : 0;
+      p->time_allotment = 0;
+    }
+
+    if(p->state == RUNNABLE) {
+      enqueue(p, &level_queue[p->level]);
+    }
+    p = 0;
+    
     release(&ptable.lock);
+    // for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    //   if(p->state != RUNNABLE)
+    //     continue;
+
+    //   // Switch to chosen process.  It is the process's job
+    //   // to release ptable.lock and then reacquire it
+    //   // before jumping back to us.
+    //   c->proc = p;
+    //   switchuvm(p);
+    //   p->state = RUNNING;
+
+    //   swtch(&(c->scheduler), p->context);
+    //   switchkvm();
+
+    //   // Process is done running for now.
+    //   // It should have changed its p->state before coming back.
+    //   c->proc = 0;
+    // }
+    // release(&ptable.lock);
 
   }
 }
@@ -460,8 +561,11 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
+    if(p->state == SLEEPING && p->chan == chan) {
       p->state = RUNNABLE;
+      enqueue(p, &level_queue[p->level]);
+    }
+
 }
 
 // Wake up all processes sleeping on chan.
@@ -486,8 +590,10 @@ kill(int pid)
     if(p->pid == pid){
       p->killed = 1;
       // Wake process from sleep if necessary.
-      if(p->state == SLEEPING)
+      if(p->state == SLEEPING) {
         p->state = RUNNABLE;
+        enqueue(p, &level_queue[p->level]);
+      }
       release(&ptable.lock);
       return 0;
     }
@@ -531,4 +637,15 @@ procdump(void)
     }
     cprintf("\n");
   }
+
+
+  p = level_queue[0];
+
+
+  while (p != 0) {
+    cprintf("queue 0: %s\n", p->name);
+    p = p->next;
+  }
+  
+
 }
