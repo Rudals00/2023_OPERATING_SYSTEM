@@ -26,7 +26,7 @@ int uptime(void);
 int myfunction(char*);
 int getLevel(void);
 int yield(void);
-int setPriority(void);
+void setPriority(int, int);
 
 // ulib.c
 int stat(const char*, struct stat*);
