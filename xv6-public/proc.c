@@ -498,7 +498,6 @@ scheduler(void)
       global_tick = 0; // Reset the global tick
     }
 
-release(&ptable.lock);
     
     release(&ptable.lock);
     
@@ -629,7 +628,30 @@ yield(void)
   release(&ptable.lock);
 }
 
+void setPriority(int pid, int priority) {
+  if (priority < 0 || priority > 3) {
+    cprintf("Invalid priority value. Priority must be between 0 and 3.\n");
+    return;
+  }
 
+  struct proc *p;
+  int pid_found = 0;
+
+  acquire(&ptable.lock);
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if (p->pid == pid) {
+      p->priority = priority;
+      pid_found = 1;
+      break;
+    }
+  }
+  release(&ptable.lock);
+
+  if (!pid_found) {
+    cprintf("PID not found.\n");
+  }
+  return;
+}
 
 
 

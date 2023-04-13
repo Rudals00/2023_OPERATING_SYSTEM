@@ -106,6 +106,7 @@ extern int sys_uptime(void);
 extern int sys_myfunction(void);
 extern int sys_yield(void);
 extern int sys_getLevel(void);
+extern int sys_setPriority(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -132,6 +133,7 @@ static int (*syscalls[])(void) = {
 [SYS_myfunction]  sys_myfunction,
 [SYS_yield]   sys_yield,
 [SYS_getLevel]   sys_getLevel, 
+[SYS_setPriority]   sys_setPriority,
 };
 
 void
