@@ -385,6 +385,7 @@ scheduler(void)
   struct proc *p = 0;
   struct cpu *c = mycpu();
   c->proc = 0;
+  int global_tick = 0;
   
   for(;;){
     // Enable interrupts on this processor.
@@ -440,6 +441,8 @@ scheduler(void)
     // Process is done running for now.
     // It should have changed its p->state before coming back.
     c->proc = 0;
+    global_tick++;
+    
     // 레벨 변경이 필요한 경우
     if (p->level < 2 && p->time_allotment >= p->time_quantum) {
       p->level++;
@@ -454,8 +457,53 @@ scheduler(void)
       enqueue(p, &level_queue[p->level]);
     }
     p = 0;
+    if (global_tick >= 100) {
+      struct proc *current = level_queue[0];
+
+      // Move to the end of level_queue[0]
+      while (current != 0 && current->next != 0) {
+        current->priority = 3;
+        current->time_allotment = 0;
+        current = current->next;
+      }
+
+      if (current != 0) {
+        current->priority = 3;
+        current->time_allotment = 0;
+      }
+
+      // Move processes from level_queue[1] and level_queue[2] to level_queue[0]
+      for (int level = 1; level <= 2; level++) {
+        struct proc *next_level_process = level_queue[level];
+
+        while (next_level_process != 0) {
+          next_level_process->level = 0;
+          next_level_process->priority = 3;
+          next_level_process->time_allotment = 0;
+
+          if (current == 0) {
+            level_queue[0] = next_level_process;
+            current = next_level_process;
+          } else {
+            current->next = next_level_process;
+            current = next_level_process;
+          }
+
+          struct proc *temp = next_level_process;
+          next_level_process = next_level_process->next; // Move to the next process
+          temp->next = 0;
+        }
+        level_queue[level] = 0; // Reset the current level_queue
+      }
+      global_tick = 0; // Reset the global tick
+    }
+
+release(&ptable.lock);
     
     release(&ptable.lock);
+    
+  }
+}
     // for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     //   if(p->state != RUNNABLE)
     //     continue;
@@ -476,8 +524,6 @@ scheduler(void)
     // }
     // release(&ptable.lock);
 
-  }
-}
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores
