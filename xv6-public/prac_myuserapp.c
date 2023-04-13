@@ -35,7 +35,7 @@ int main()
 	if (!p) {
 		int cnt[3] = {0, };
 		for (int i = 0; i < NUM_LOOP1; i++) {
-			// cnt[getLevel()]++;
+			cnt[getLevel()]++;
 		}
 		printf(1, "process : L0=%d, L1=%d, L2=%d\n", cnt[0], cnt[1],cnt[2]);
 	}

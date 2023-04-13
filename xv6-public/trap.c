@@ -58,6 +58,7 @@ trap(struct trapframe *tf)
 
     if(myproc() && myproc()->state == RUNNING && tf->trapno == T_IRQ0+IRQ_TIMER) {
       myproc()->time_allotment++; // time_allotment 증가
+      
     }
     
     break;

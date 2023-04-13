@@ -89,3 +89,17 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+int
+sys_yield(void)
+{
+  yield();
+  return 0;
+}
+
+
+int 
+sys_getLevel(void)
+{
+  return getLevel();
+}

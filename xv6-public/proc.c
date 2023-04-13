@@ -77,19 +77,9 @@ void enqueue(struct proc *p, struct proc **queue) {
       tmp = tmp->next;
     }
 
-
     // 마지막 요소 다음에 프로세스를 추가
     tmp->next = p;
     p->next = 0;
-
-    // cprintf("pid : %d, pid2 : %d\n", tmp->pid, p->pid);
-    // cprintf("----\n\n");
-    // while (tmp) {
-    //   cprintf("pid: %d\n", tmp->pid);
-    //   tmp = tmp->next;
-    // }
-    
-
   }
 }
 
@@ -103,6 +93,25 @@ struct proc *dequeue(struct proc **queue) {
     *queue = (*queue)->next;
     dequeued_proc->next = 0;
     return dequeued_proc;
+  }
+}
+
+void
+dequeue_specific(struct proc **queue, struct proc *p_specific)
+{
+  struct proc *p = 0;
+  struct proc *prev = 0;
+
+  for (p = *queue; p != 0; prev = p, p = p->next) {
+    if (p == p_specific) {
+      if (prev) {
+        prev->next = p->next;
+      } else {
+        *queue = p->next;
+      }
+      p->next = 0;
+      break;
+    }
   }
 }
 
@@ -386,19 +395,32 @@ scheduler(void)
 
     
     for(int level = 0; level < 3; level++) {
-      if (level_queue[level] == 0) {
-        continue;
-      }
+      struct proc *p_high_priority = 0;
 
-      p = dequeue(&level_queue[level]);
-      break;
+      if (level == 2) {
+        for (p = level_queue[level]; p != 0; p = p->next) {
+          if (p_high_priority == 0 || p->priority < p_high_priority->priority) {
+            p_high_priority = p;
+          }
+        }
+        if (p_high_priority != 0) {
+          dequeue_specific(&level_queue[level], p_high_priority);
+          p = p_high_priority;
+          break;
+        }
+      } else {
+        p = dequeue(&level_queue[level]);
+        if (p != 0) {
+          break;
+        }
+      }
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
-      if (p->state != RUNNABLE) {
-    // If not, continue with the next iteration of the loop
-        continue;
-      }
+    //   if (p->state != RUNNABLE) {
+    // // If not, continue with the next iteration of the loop
+    //     continue;
+    //   }
     }
 
     if(p == 0) {
@@ -406,17 +428,18 @@ scheduler(void)
       continue;
     }
 
+    // cprintf("pid: %d time_allotment: %d priority: %d, level : %d\n",p->pid,p->time_allotment,p->priority, p->level);
+
     c->proc = p;
     switchuvm(p);
     p->state = RUNNING;
-
+  
     swtch(&(c->scheduler), p->context);
     switchkvm();
 
     // Process is done running for now.
     // It should have changed its p->state before coming back.
     c->proc = 0;
-
     // 레벨 변경이 필요한 경우
     if (p->level < 2 && p->time_allotment >= p->time_quantum) {
       p->level++;
@@ -483,14 +506,7 @@ sched(void)
 }
 
 // Give up the CPU for one scheduling round.
-void
-yield(void)
-{
-  acquire(&ptable.lock);  //DOC: yieldlock
-  myproc()->state = RUNNABLE;
-  sched();
-  release(&ptable.lock);
-}
+
 
 // A fork child's very first scheduling by scheduler()
 // will swtch here.  "Return" to user space.
@@ -551,6 +567,25 @@ sleep(void *chan, struct spinlock *lk)
     acquire(lk);
   }
 }
+
+int
+getLevel(void)
+{
+  return myproc()->level;
+}
+void
+yield(void)
+{
+  struct proc *p = myproc();
+  acquire(&ptable.lock);
+  p->state = RUNNABLE;
+  sched();
+  release(&ptable.lock);
+}
+
+
+
+
 
 //PAGEBREAK!
 // Wake up all processes sleeping on chan.
@@ -639,13 +674,6 @@ procdump(void)
   }
 
 
-  p = level_queue[0];
-
-
-  while (p != 0) {
-    cprintf("queue 0: %s\n", p->name);
-    p = p->next;
-  }
-  
-
 }
+
+
