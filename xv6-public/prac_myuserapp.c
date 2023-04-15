@@ -1,43 +1,102 @@
-// test
 #include "types.h"
+#include "stat.h"
 #include "user.h"
-#include "fcntl.h"
-#define NUM_CHILD 5
-#define NUM_LOOP1 500000
-#define NUM_LOOP2 1000000
-#define NUM_LOOP3 200000
-#define NUM_LOOP4 1000000
 
-int me;
-int create_child(void){
-  for(int i =0  ; i<NUM_CHILD; i++){
-    int pid = fork();
-    if(pid == 0){
-      me = i;
+#define NUM_LOOP 100000
+#define NUM_YIELD 20000
+#define NUM_SLEEP 1000
+
+#define NUM_THREAD 4
+#define MAX_LEVEL 5
+
+int parent;
+
+int fork_children()
+{
+  int i, p;
+  for (i = 0; i < NUM_THREAD; i++)
+    if ((p = fork()) == 0)
+    {
       sleep(10);
-      return 0;
+      return getpid();
+    }
+  return parent;
+}
+
+
+int fork_children2()
+{
+  int i, p;
+  for (i = 0; i < NUM_THREAD; i++)
+  {
+    if ((p = fork()) == 0)
+    {
+      sleep(300);
+      return getpid();
+    }
+    else
+    {
+      setPriority(p, i);
+     
     }
   }
-  return 1;
+  return parent;
 }
 
-void exit_child(int parent) {
-	if (parent)
-		while (wait() != -1); // wait for all child processes to finish
-	exit();
-}
+int max_level;
 
-int main()
+int fork_children3()
 {
-  int p;
-  p = create_child();
+  int i, p;
+  for (i = 0; i < NUM_THREAD; i++)
+  {
+    if ((p = fork()) == 0)
+    {
+      sleep(10);
+      max_level = i;
+      return getpid();
+    }
+  }
+  return parent;
+}
+void exit_children()
+{
+  if (getpid() != parent)
+    exit();
+  while (wait() != -1);
+}
 
-	if (!p) {
-		int cnt[3] = {0, };
-		for (int i = 0; i < NUM_LOOP1; i++) {
-			cnt[getLevel()]++;
-		}
-		printf(1, "pid: :%d  L0=%d, L1=%d, L2=%d \n",getpid(), cnt[0], cnt[1],cnt[2]);
-	}
-	exit_child(p);
+int main(int argc, char *argv[])
+{
+  int i, pid;
+  int count[MAX_LEVEL] = {0};
+//  int child;
+
+  parent = getpid();
+
+  printf(1, "MLFQ test start\n");
+
+  printf(1, "[Test 1] default\n");
+  pid = fork_children();
+
+  if (pid != parent)
+  {
+    for (i = 0; i < NUM_LOOP; i++)
+    {
+      int x = getLevel();
+      if (x < 0 || x > 4)
+      {
+        printf(1, "Wrong level: %d\n", x);
+        exit();
+      }
+      count[x]++;
+    }
+    printf(1, "Process %d\n", pid);
+    for (i = 0; i < MAX_LEVEL; i++)
+      printf(1, "L%d: %d\n", i, count[i]);
+  }
+  exit_children();
+  printf(1, "[Test 1] finished\n");
+  printf(1, "done\n");
+  exit();
 }

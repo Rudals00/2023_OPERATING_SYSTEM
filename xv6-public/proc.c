@@ -11,7 +11,8 @@ struct {
   struct spinlock lock;
   struct proc proc[NPROC];
 } ptable;
-
+int global_tick = 0;
+int scheduler_locked=0;
 static struct proc *initproc;
 
 int nextpid = 1;
@@ -112,6 +113,51 @@ dequeue_specific(struct proc **queue, struct proc *p_specific)
       p->next = 0;
       break;
     }
+  }
+}
+
+void
+schedulerLock(int password)
+{
+  acquire(&ptable.lock);
+  if(scheduler_locked == 1){
+    cprintf("already locked\n");
+    release(&ptable.lock);
+    return;
+  }
+  if(password == 2019041703){
+    global_tick = 0;
+    scheduler_locked = 1;
+  }
+  else{
+    cprintf("Incorrect password for schedulerLock\n");
+    cprintf("Pid : %d , time quantum : %d, Queue_Level : %d\n",myproc()->pid,myproc()->time_allotment, myproc()->level);
+    release(&ptable.lock);
+    exit();
+    
+  }
+  release(&ptable.lock);
+
+}
+
+void
+schedulerUnlock(int password){
+  //전역변수로 schedulerlock이 걸려있는지 확인하기
+
+  if(password == 2019041703){
+    scheduler_locked = 0;
+    myproc()->next = level_queue[0];
+    level_queue[0] = myproc();
+    myproc()->level = 0;
+    myproc()->time_allotment = 0;
+    myproc()->time_quantum = 2*myproc()->level+4;
+  }
+  else{
+    cprintf("Incorrect password for schedulerUnLock\n");
+    cprintf("Pid : %d , time quantum : %d, Queue_Level : %d\n",myproc()->pid,myproc()->time_allotment, myproc()->level);
+    release(&ptable.lock);
+    exit();
+    
   }
 }
 
@@ -379,13 +425,15 @@ wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
+
+
 void
 scheduler(void)
 {
   struct proc *p = 0;
   struct cpu *c = mycpu();
   c->proc = 0;
-  int global_tick = 0;
+  
   
   for(;;){
     // Enable interrupts on this processor.
@@ -393,8 +441,10 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-
-    
+    if(p&&scheduler_locked==1){
+      //Locked process found, skip the queue search
+    } 
+    else{
     for(int level = 0; level < 3; level++) {
       struct proc *p_high_priority = 0;
 
@@ -423,7 +473,7 @@ scheduler(void)
     //     continue;
     //   }
     }
-
+    }
     if(p == 0) {
       release(&ptable.lock);
       continue;
@@ -454,11 +504,12 @@ scheduler(void)
       p->priority = (p->priority - 1 >= 0) ? p->priority - 1 : 0;
       p->time_allotment = 0;
     }
-
+  
     if(p->state == RUNNABLE) {
       enqueue(p, &level_queue[p->level]);
     }
-    p = 0;
+    if(scheduler_locked!=1){
+    p = 0;}
     if (global_tick >= 100) {
       struct proc *current = level_queue[0];
 
@@ -499,6 +550,9 @@ scheduler(void)
         
         }
         level_queue[level] = 0; // Reset the current level_queue
+      }
+      if(scheduler_locked==1){
+        schedulerUnlock(2019041703);
       }
       global_tick = 0; // Reset the global tick
     }

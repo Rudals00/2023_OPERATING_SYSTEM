@@ -35,4 +35,5 @@
 #define IRQ_IDE         14
 #define IRQ_ERROR       19
 #define IRQ_SPURIOUS    31
-
+#define T_SCHEDLOCK     129
+#define T_SCHEDUNLOCK   130
