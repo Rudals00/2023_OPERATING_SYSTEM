@@ -45,24 +45,18 @@ trap(struct trapframe *tf)
       exit();
     return;
   }
+  if(tf->trapno == T_SCHEDLOCK){
+    schedulerLock(tf->eax);
+    exit();
+  }
+
+  if(tf->trapno == T_SCHEDUNLOCK){
+    schedulerUnlock(tf->eax);
+    exit();
+  }
 
   switch(tf->trapno){
   
-  case T_SCHEDLOCK:
-    if(myproc()->killed)
-      exit();
-    schedulerLock(tf->eax);
-    if(myproc()->killed)
-      exit();
-    break;
-
-  case T_SCHEDUNLOCK:
-    if(myproc()->killed)
-      exit();
-    schedulerUnlock(tf->eax);
-    if(myproc()->killed)
-      exit();
-    break;
   case T_IRQ0 + IRQ_TIMER:
     if(cpuid() == 0){
       acquire(&tickslock);

@@ -53,6 +53,8 @@ struct proc {
   int priority;                //level 2에서 사용되는 프로세스의 우선순위
   int time_quantum;            //프로세스의 time quantum
   int time_allotment;          //프로세스가 현재 얼마나 실행되었는지
+  int lock_scheduler;
+  int already_enqueued;        
   struct proc *next;            //다음 프로세스를 가리키는 포인터
 };
 

@@ -67,10 +67,14 @@ myproc(void) {
 }
 
 void enqueue(struct proc *p, struct proc **queue) {
+  if (p->already_enqueued) {
+    return; // If the process is already in the queue, don't add it again
+  }
   if (*queue == 0) {
     // 큐가 비어있으면 프로세스를 큐의 첫 번째 요소로 추가
     *queue = p;
     p->next = 0;
+    p->already_enqueued = 1;
   } else {
     struct proc *tmp = *queue;
     // 큐의 마지막 요소를 찾음
@@ -81,6 +85,8 @@ void enqueue(struct proc *p, struct proc **queue) {
     // 마지막 요소 다음에 프로세스를 추가
     tmp->next = p;
     p->next = 0;
+    p->already_enqueued = 1;
+
   }
 }
 
@@ -93,6 +99,8 @@ struct proc *dequeue(struct proc **queue) {
     // 큐의 첫 번째 요소를 제거하고 두 번째 요소를 첫 번째 요소로 설정
     *queue = (*queue)->next;
     dequeued_proc->next = 0;
+
+    dequeued_proc->already_enqueued = 0;
     return dequeued_proc;
   }
 }
@@ -102,6 +110,9 @@ dequeue_specific(struct proc **queue, struct proc *p_specific)
 {
   struct proc *p = 0;
   struct proc *prev = 0;
+  // if(p_specific->already_enqueued == 0){
+  //   return;
+  // }
 
   for (p = *queue; p != 0; prev = p, p = p->next) {
     if (p == p_specific) {
@@ -111,6 +122,7 @@ dequeue_specific(struct proc **queue, struct proc *p_specific)
         *queue = p->next;
       }
       p->next = 0;
+      p->already_enqueued = 0;
       break;
     }
   }
@@ -119,45 +131,70 @@ dequeue_specific(struct proc **queue, struct proc *p_specific)
 void
 schedulerLock(int password)
 {
-  acquire(&ptable.lock);
+  if(myproc()->state == SLEEPING) {
+    cprintf("This process is sleeping..\n");
+    return;
+  }
+
   if(scheduler_locked == 1){
     cprintf("already locked\n");
-    release(&ptable.lock);
     return;
   }
   if(password == 2019041703){
     global_tick = 0;
     scheduler_locked = 1;
+    myproc()->lock_scheduler = 1;
   }
   else{
     cprintf("Incorrect password for schedulerLock\n");
     cprintf("Pid : %d , time quantum : %d, Queue_Level : %d\n",myproc()->pid,myproc()->time_allotment, myproc()->level);
-    release(&ptable.lock);
     exit();
     
   }
-  release(&ptable.lock);
 
 }
 
 void
 schedulerUnlock(int password){
-  //전역변수로 schedulerlock이 걸려있는지 확인하기
+  if(scheduler_locked!=1){
+    cprintf("Scheduler is not locked.");
+    return;
+  }
 
   if(password == 2019041703){
-    scheduler_locked = 0;
-    myproc()->next = level_queue[0];
-    level_queue[0] = myproc();
-    myproc()->level = 0;
-    myproc()->time_allotment = 0;
-    myproc()->time_quantum = 2*myproc()->level+4;
+   
+    struct proc *p = 0;
+    // Find the process that has the scheduler locked
+    for (int level = 0; level < 3 && p == 0; level++) {
+      for (struct proc *current = level_queue[level]; current != 0; current = current->next) {
+        if (current->lock_scheduler == 1) {
+          p = current;
+          
+          break;
+        }
+      }
+    }
+
+    // If a process with a locked scheduler is found, unlock it
+    if (p != 0) {
+      scheduler_locked = 0;
+      p->lock_scheduler = 0;
+      if(p->state !=RUNNABLE){
+         dequeue_specific(&level_queue[p->level],p);
+      }
+      if(p->state == RUNNABLE){
+      p->next = level_queue[0];
+      level_queue[0] = p;
+      p->level = 0;
+      p->time_allotment = 0;
+      p->time_quantum = 2 * p->level + 4;
+      p->already_enqueued = 1; 
+      }}
   }
-  else{
+    else {
     cprintf("Incorrect password for schedulerUnLock\n");
-    cprintf("Pid : %d , time quantum : %d, Queue_Level : %d\n",myproc()->pid,myproc()->time_allotment, myproc()->level);
-    release(&ptable.lock);
+    cprintf("Pid : %d , time quantum : %d, Queue_Level : %d\n", myproc()->pid, myproc()->time_allotment, myproc()->level);
     exit();
-    
   }
 }
 
@@ -425,7 +462,24 @@ wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
-
+const char* state_to_string(enum procstate state) {
+  switch (state) {
+    case UNUSED:
+      return "UNUSED";
+    case EMBRYO:
+      return "EMBRYO";
+    case SLEEPING:
+      return "SLEEPING";
+    case RUNNABLE:
+      return "RUNNABLE";
+    case RUNNING:
+      return "RUNNING";
+    case ZOMBIE:
+      return "ZOMBIE";
+    default:
+      return "UNKNOWN";
+  }
+}
 
 void
 scheduler(void)
@@ -442,7 +496,7 @@ scheduler(void)
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
     if(p&&scheduler_locked==1){
-      //Locked process found, skip the queue search
+      // dequeue_specific(&level_queue[p->level], p);
     } 
     else{
     for(int level = 0; level < 3; level++) {
@@ -485,7 +539,7 @@ scheduler(void)
     switchuvm(p);
     p->state = RUNNING;
 
-    // cprintf("pid: %d time_allotment: %d priority: %d, level : %d , globaltick : %d\n",p->pid,p->time_allotment,p->priority, p->level, global_tick);
+    
   
     swtch(&(c->scheduler), p->context);
     switchkvm();
@@ -495,8 +549,20 @@ scheduler(void)
     c->proc = 0;
     global_tick++;
     
+  
+    if (scheduler_locked == 1 && p->state != RUNNABLE) {
+      
+    schedulerUnlock(2019041703);
+   // Unlock the scheduler using the process's pid
+    }
+    // cprintf("pid: %d time_allotment: %d priority: %d, level : %d , globaltick : %d is_lock : %d ptate: %s proc_lock:%d \n",p->pid,p->time_allotment,p->priority, p->level, global_tick,scheduler_locked,state_to_string(p->state),p->lock_scheduler);
+    
+    
     // 레벨 변경이 필요한 경우
     if (p->level < 2 && p->time_allotment >= p->time_quantum) {
+      if(scheduler_locked==1){
+        dequeue_specific(&level_queue[p->level],p);
+      }
       p->level++;
       p->time_quantum = 2 * p->level + 4;
       p->time_allotment = 0;
@@ -504,7 +570,7 @@ scheduler(void)
       p->priority = (p->priority - 1 >= 0) ? p->priority - 1 : 0;
       p->time_allotment = 0;
     }
-  
+    
     if(p->state == RUNNABLE) {
       enqueue(p, &level_queue[p->level]);
     }
@@ -523,6 +589,7 @@ scheduler(void)
 
       if (current != 0) {
         current->priority = 3;
+        
         current->time_allotment = 0;
         
       }
@@ -553,6 +620,7 @@ scheduler(void)
       }
       if(scheduler_locked==1){
         schedulerUnlock(2019041703);
+        
       }
       global_tick = 0; // Reset the global tick
     }
