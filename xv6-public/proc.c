@@ -110,10 +110,7 @@ dequeue_specific(struct proc **queue, struct proc *p_specific)
 {
   struct proc *p = 0;
   struct proc *prev = 0;
-  // if(p_specific->already_enqueued == 0){
-  //   return;
-  // }
-
+ 
   for (p = *queue; p != 0; prev = p, p = p->next) {
     if (p == p_specific) {
       if (prev) {
@@ -492,7 +489,7 @@ scheduler(void)
   for(;;){
     // Enable interrupts on this processor.
     sti();
-
+    
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
     if(p&&scheduler_locked==1){
@@ -526,20 +523,21 @@ scheduler(void)
     // // If not, continue with the next iteration of the loop
     //     continue;
     //   }
+    
     }
     }
     if(p == 0) {
       release(&ptable.lock);
       continue;
     }
-
+    
     // cprintf("pid: %d time_allotment: %d priority: %d, level : %d\n",p->pid,p->time_allotment,p->priority, p->level);
-
+// cprintf("pid: %d time_allotment: %d priority: %d, level : %d , globaltick : %d is_lock : %d ptate: %s proc_lock:%d enqueued: %d \n",p->pid,p->time_allotment,p->priority, p->level, global_tick,scheduler_locked,state_to_string(p->state),p->lock_scheduler, p->already_enqueued);
     c->proc = p;
     switchuvm(p);
     p->state = RUNNING;
-
-    
+    // cprintf("pid: %d time_allotment: %d priority: %d, level : %d , globaltick : %d is_lock : %d ptate: %s proc_lock:%d enqueued: %d \n",p->pid,p->time_allotment,p->priority, p->level, global_tick,scheduler_locked,state_to_string(p->state),p->lock_scheduler, p->already_enqueued);
+  
   
     swtch(&(c->scheduler), p->context);
     switchkvm();
@@ -547,15 +545,17 @@ scheduler(void)
     // Process is done running for now.
     // It should have changed its p->state before coming back.
     c->proc = 0;
-    global_tick++;
-    
+    // cprintf("pid: %d time_allotment: %d priority: %d, level : %d , globaltick : %d is_lock : %d ptate: %s proc_lock:%d enqueued: %d \n",p->pid,p->time_allotment,p->priority, p->level, global_tick,scheduler_locked,state_to_string(p->state),p->lock_scheduler, p->already_enqueued);
+    // if (p->state == RUNNABLE) {
+    //   p->time_allotment++;
+    //   }
   
     if (scheduler_locked == 1 && p->state != RUNNABLE) {
       
     schedulerUnlock(2019041703);
    // Unlock the scheduler using the process's pid
     }
-    // cprintf("pid: %d time_allotment: %d priority: %d, level : %d , globaltick : %d is_lock : %d ptate: %s proc_lock:%d \n",p->pid,p->time_allotment,p->priority, p->level, global_tick,scheduler_locked,state_to_string(p->state),p->lock_scheduler);
+    
     
     
     // 레벨 변경이 필요한 경우
@@ -574,6 +574,7 @@ scheduler(void)
     if(p->state == RUNNABLE) {
       enqueue(p, &level_queue[p->level]);
     }
+
     if(scheduler_locked!=1){
     p = 0;}
     if (global_tick >= 100) {
