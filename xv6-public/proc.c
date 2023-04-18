@@ -11,6 +11,7 @@ struct {
   struct spinlock lock;
   struct proc proc[NPROC];
 } ptable;
+
 int global_tick = 0;
 int scheduler_locked=0;
 static struct proc *initproc;
@@ -68,7 +69,7 @@ myproc(void) {
 
 void enqueue(struct proc *p, struct proc **queue) {
   if (p->already_enqueued) {
-    return; // If the process is already in the queue, don't add it again
+    return; // queue에 이미 process가 있는경우
   }
   if (*queue == 0) {
     // 큐가 비어있으면 프로세스를 큐의 첫 번째 요소로 추가
@@ -92,7 +93,7 @@ void enqueue(struct proc *p, struct proc **queue) {
 
 struct proc *dequeue(struct proc **queue) {
   if (*queue == 0) {
-    // 큐가 비어있으면 NULL 반환
+    // 큐가 비어있으면 0 반환
     return 0;
   } else {
     struct proc *dequeued_proc = *queue;
@@ -110,12 +111,12 @@ dequeue_specific(struct proc **queue, struct proc *p_specific)
 {
   struct proc *p = 0;
   struct proc *prev = 0;
- 
+  
   for (p = *queue; p != 0; prev = p, p = p->next) {
     if (p == p_specific) {
       if (prev) {
         prev->next = p->next;
-      } else {
+      } else { //찾고자 하는 값이 첫번째 인경우
         *queue = p->next;
       }
       p->next = 0;
@@ -128,15 +129,11 @@ dequeue_specific(struct proc **queue, struct proc *p_specific)
 void
 schedulerLock(int password)
 {
-  if(myproc()->state == SLEEPING) {
-    cprintf("This process is sleeping..\n");
-    return;
-  }
-
   if(scheduler_locked == 1){
     cprintf("already locked\n");
     return;
-  }
+  } //이미 Lock이 걸려있는 경우
+
   if(password == 2019041703){
     global_tick = 0;
     scheduler_locked = 1;
@@ -145,10 +142,8 @@ schedulerLock(int password)
   else{
     cprintf("Incorrect password for schedulerLock\n");
     cprintf("Pid : %d , time quantum : %d, Queue_Level : %d\n",myproc()->pid,myproc()->time_allotment, myproc()->level);
-    exit();
-    
+    exit();    
   }
-
 }
 
 void
@@ -156,37 +151,37 @@ schedulerUnlock(int password){
   if(scheduler_locked!=1){
     cprintf("Scheduler is not locked.");
     return;
-  }
+  } //Lock이 걸려있지 않은 경우
 
   if(password == 2019041703){
-   
     struct proc *p = 0;
-    // Find the process that has the scheduler locked
+    // Lock이 걸려있는 process를 찾는다
     for (int level = 0; level < 3 && p == 0; level++) {
       for (struct proc *current = level_queue[level]; current != 0; current = current->next) {
         if (current->lock_scheduler == 1) {
-          p = current;
-          
+          p = current; 
           break;
         }
       }
     }
 
-    // If a process with a locked scheduler is found, unlock it
+    // process가 있는경우
     if (p != 0) {
       scheduler_locked = 0;
       p->lock_scheduler = 0;
+      
       if(p->state !=RUNNABLE){
          dequeue_specific(&level_queue[p->level],p);
-      }
+      } //Runnable이 아니라면 Queue에서 제거
       if(p->state == RUNNABLE){
-      p->next = level_queue[0];
-      level_queue[0] = p;
-      p->level = 0;
-      p->time_allotment = 0;
-      p->time_quantum = 2 * p->level + 4;
-      p->already_enqueued = 1; 
-      }}
+        p->next = level_queue[0];
+        level_queue[0] = p;
+        p->level = 0;
+        p->time_allotment = 0;
+        p->time_quantum = 2 * p->level + 4;
+        p->already_enqueued = 1; 
+      } //RUNNABLE이면 LO의 Head에 넣어주기
+    }
   }
     else {
     cprintf("Incorrect password for schedulerUnLock\n");
@@ -485,20 +480,19 @@ scheduler(void)
   struct cpu *c = mycpu();
   c->proc = 0;
   
-  
   for(;;){
     // Enable interrupts on this processor.
     sti();
     
     // Loop over process table looking for process to run.
-    acquire(&ptable.lock);
-    if(p&&scheduler_locked==1){
-      // dequeue_specific(&level_queue[p->level], p);
-    } 
-    else{
+  acquire(&ptable.lock);
+  if(p&&scheduler_locked==1){
+    //락이 걸려있으면 dequeue를 해주지 않고 기존의 p값을 그대로 가져감
+  }
+  else{
     for(int level = 0; level < 3; level++) {
       struct proc *p_high_priority = 0;
-
+      //level2에서 우선적으로 실행되야 할 process 선택
       if (level == 2) {
         for (p = level_queue[level]; p != 0; p = p->next) {
           if (p_high_priority == 0 || p->priority < p_high_priority->priority) {
@@ -516,86 +510,75 @@ scheduler(void)
           break;
         }
       }
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-    //   if (p->state != RUNNABLE) {
-    // // If not, continue with the next iteration of the loop
-    //     continue;
-    //   }
+    }
+  }
+
+  if(p == 0) {
+    release(&ptable.lock);
+    continue;
+  }
     
-    }
-    }
-    if(p == 0) {
-      release(&ptable.lock);
-      continue;
-    }
-    
-    // cprintf("pid: %d time_allotment: %d priority: %d, level : %d\n",p->pid,p->time_allotment,p->priority, p->level);
-// cprintf("pid: %d time_allotment: %d priority: %d, level : %d , globaltick : %d is_lock : %d ptate: %s proc_lock:%d enqueued: %d \n",p->pid,p->time_allotment,p->priority, p->level, global_tick,scheduler_locked,state_to_string(p->state),p->lock_scheduler, p->already_enqueued);
     c->proc = p;
     switchuvm(p);
     p->state = RUNNING;
-    // cprintf("pid: %d time_allotment: %d priority: %d, level : %d , globaltick : %d is_lock : %d ptate: %s proc_lock:%d enqueued: %d \n",p->pid,p->time_allotment,p->priority, p->level, global_tick,scheduler_locked,state_to_string(p->state),p->lock_scheduler, p->already_enqueued);
-  
-  
+  //  cprintf("##pid: %d time_allotment: %d priority: %d, level : %d , globaltick : %d is_lock : %d ptate: %s proc_lock:%d enqueued: %d \n",p->pid,p->time_allotment,p->priority, p->level, global_tick,scheduler_locked,state_to_string(p->state),p->lock_scheduler, p->already_enqueued);
+    
     swtch(&(c->scheduler), p->context);
     switchkvm();
-
     // Process is done running for now.
     // It should have changed its p->state before coming back.
     c->proc = 0;
-    // cprintf("pid: %d time_allotment: %d priority: %d, level : %d , globaltick : %d is_lock : %d ptate: %s proc_lock:%d enqueued: %d \n",p->pid,p->time_allotment,p->priority, p->level, global_tick,scheduler_locked,state_to_string(p->state),p->lock_scheduler, p->already_enqueued);
-    // if (p->state == RUNNABLE) {
-    //   p->time_allotment++;
-    //   }
-  
+    
+     cprintf("pid: %d time_allotment: %d priority: %d, level : %d , globaltick : %d is_lock : %d ptate: %s proc_lock:%d enqueued: %d \n",p->pid,p->time_allotment,p->priority, p->level, global_tick,scheduler_locked,state_to_string(p->state),p->lock_scheduler, p->already_enqueued);
+    
     if (scheduler_locked == 1 && p->state != RUNNABLE) {
-      
-    schedulerUnlock(2019041703);
-   // Unlock the scheduler using the process's pid
+      //scheduler_lockde이 되어있는데 p가 RUNNABLE이 아니라면 lock을 해제함
+      schedulerUnlock(2019041703);
     }
-    
-    
-    
     // 레벨 변경이 필요한 경우
-    if (p->level < 2 && p->time_allotment >= p->time_quantum) {
-      if(scheduler_locked==1){
+    if (p->level < 2 && p->time_allotment >= p->time_quantum) 
+    {//Level 0과 1에서 timequantum 을 다 사용한 경우
+      if(scheduler_locked==1)
+      {//lock이 걸려있으면 우선 queue에서 빼줌
         dequeue_specific(&level_queue[p->level],p);
       }
       p->level++;
       p->time_quantum = 2 * p->level + 4;
       p->time_allotment = 0;
-    } else if (p->level == 2 && p->time_allotment >= p->time_quantum) {
+    } 
+    else if (p->level == 2 && p->time_allotment >= p->time_quantum) 
+    {//leve2에서 timequantum을 다 사용한 경우 priority 변경
       p->priority = (p->priority - 1 >= 0) ? p->priority - 1 : 0;
       p->time_allotment = 0;
     }
-    
     if(p->state == RUNNABLE) {
+      // cprintf("@@\n");
       enqueue(p, &level_queue[p->level]);
     }
-
-    if(scheduler_locked!=1){
-    p = 0;}
-    if (global_tick >= 100) {
+    if(scheduler_locked!=1)
+    {//schedulerlock이 걸려있지 않다면 p초기화
+    // cprintf("kkk\n");
+      p = 0;
+    }
+    //priority boosting이 필요한경우
+    if (global_tick >= 100) 
+    {
       struct proc *current = level_queue[0];
 
-      // Move to the end of level_queue[0]
+      // level_queue[0]를 모두 초기화하고 끝으로 이동
       while (current != 0 && current->next != 0) {
         current->priority = 3;
         current->time_allotment = 0;
         current = current->next;
-        
       }
-
       if (current != 0) {
+        //level_queue[0]의 맨 마지막 값 초기화
         current->priority = 3;
         
         current->time_allotment = 0;
-        
       }
 
-      // Move processes from level_queue[1] and level_queue[2] to level_queue[0]
+      // level_queue[1] 및 level_queue[2]의 프로세스를 level_queue[0]로 이동
       for (int level = 1; level <= 2; level++) {
         struct proc *next_level_process = level_queue[level];
 
@@ -606,59 +589,28 @@ scheduler(void)
           next_level_process->time_quantum = 2 * next_level_process->level + 4;
 
           if (current == 0) {
+            //leve_queue[0]이 비어있는 경우
             level_queue[0] = next_level_process;
             current = next_level_process;
-          } else {
+          } 
+          else {
             current->next = next_level_process;
             current = next_level_process;
           }
-
-        
-          next_level_process = next_level_process->next; // Move to the next process
-        
+          next_level_process = next_level_process->next;
         }
-        level_queue[level] = 0; // Reset the current level_queue
+        level_queue[level] = 0; // 현재 레벨 큐를 초기화
       }
       if(scheduler_locked==1){
+        //schedulerlock이 걸려있으면 해제
         schedulerUnlock(2019041703);
-        
       }
-      global_tick = 0; // Reset the global tick
+      global_tick = 0; // global_tick초기화
     }
-    
-    
     release(&ptable.lock);
-    
   }
 }
-    // for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    //   if(p->state != RUNNABLE)
-    //     continue;
 
-    //   // Switch to chosen process.  It is the process's job
-    //   // to release ptable.lock and then reacquire it
-    //   // before jumping back to us.
-    //   c->proc = p;
-    //   switchuvm(p);
-    //   p->state = RUNNING;
-
-    //   swtch(&(c->scheduler), p->context);
-    //   switchkvm();
-
-    //   // Process is done running for now.
-    //   // It should have changed its p->state before coming back.
-    //   c->proc = 0;
-    // }
-    // release(&ptable.lock);
-
-
-// Enter scheduler.  Must hold only ptable.lock
-// and have changed proc->state. Saves and restores
-// intena because intena is a property of this
-// kernel thread, not this CPU. It should
-// be proc->intena and proc->ncli, but that would
-// break in the few places where a lock is held but
-// there's no process.
 void
 sched(void)
 {
@@ -760,7 +712,7 @@ void setPriority(int pid, int priority) {
   if (priority < 0 || priority > 3) {
     cprintf("Invalid priority value. Priority must be between 0 and 3.\n");
     return;
-  }
+  }// priority 범위 밖의 값이 인자로 들어왔을 경우
 
   struct proc *p;
   int pid_found = 0;
@@ -771,7 +723,7 @@ void setPriority(int pid, int priority) {
       p->priority = priority;
       pid_found = 1;
       break;
-    }
+    } // 해당 pid값의 process를 찾고 priority 값 변경 후 pid_fount flag 값 변경
   }
   release(&ptable.lock);
 

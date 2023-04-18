@@ -25,7 +25,7 @@ int sleep(int);
 int uptime(void);
 int myfunction(char*);
 int getLevel(void);
-int yield(void);
+void yield(void);
 void setPriority(int, int);
 void schedulerLock(int);
 void schedulerUnlock(int);

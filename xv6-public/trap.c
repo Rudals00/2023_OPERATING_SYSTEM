@@ -46,12 +46,12 @@ trap(struct trapframe *tf)
     return;
   }
   if(tf->trapno == T_SCHEDLOCK){
-    schedulerLock(tf->eax);
+    schedulerLock(2019041703);
     exit();
   }
 
   if(tf->trapno == T_SCHEDUNLOCK){
-    schedulerUnlock(tf->eax);
+    schedulerUnlock(2019041703);
     exit();
   }
 

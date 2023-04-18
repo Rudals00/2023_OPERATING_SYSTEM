@@ -52,14 +52,14 @@ struct proc {
   int level;                   // 프로세스의 레벨
   int priority;                //level 2에서 사용되는 프로세스의 우선순위
   int time_quantum;            //프로세스의 time quantum
-  int time_allotment;          //프로세스가 현재 얼마나 실행되었는지
-  int lock_scheduler;   
-  int already_enqueued;
+  int time_allotment;          //프로세스가 해당 Level에서 얼마나 실행되었는지
+  int lock_scheduler;          //값이 1이면 Lock을 건 process
+  int already_enqueued;        //값이 1이면 이미 Queue에 들어가 있다 
   struct proc *next;            //다음 프로세스를 가리키는 포인터
 };
 
 struct proc *level_queue[3]; // 각 큐의 헤드
-extern int global_tick;
+extern int global_tick;     //priority boosting을 위한 tick
 // Process memory is laid out contiguously, low addresses first:
 //   text
 //   original data and bss
