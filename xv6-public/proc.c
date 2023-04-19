@@ -111,6 +111,10 @@ dequeue_specific(struct proc **queue, struct proc *p_specific)
 {
   struct proc *p = 0;
   struct proc *prev = 0;
+
+  if(p_specific->already_enqueued == 0){
+    return;
+  }//p가 큐에 들어가 있지 않은 상태
   
   for (p = *queue; p != 0; prev = p, p = p->next) {
     if (p == p_specific) {
@@ -173,14 +177,14 @@ schedulerUnlock(int password){
       if(p->state !=RUNNABLE){
          dequeue_specific(&level_queue[p->level],p);
       } //Runnable이 아니라면 Queue에서 제거
-      if(p->state == RUNNABLE){
+      if(p->state == RUNNABLE|| p->state==RUNNING){
         p->next = level_queue[0];
         level_queue[0] = p;
         p->level = 0;
         p->time_allotment = 0;
         p->time_quantum = 2 * p->level + 4;
         p->already_enqueued = 1; 
-      } //RUNNABLE이면 LO의 Head에 넣어주기
+      } //RUNNABLE 또는 Running이면 LO의 Head에 넣어주기
     }
   }
     else {
@@ -521,16 +525,15 @@ scheduler(void)
     c->proc = p;
     switchuvm(p);
     p->state = RUNNING;
-  //  cprintf("##pid: %d time_allotment: %d priority: %d, level : %d , globaltick : %d is_lock : %d ptate: %s proc_lock:%d enqueued: %d \n",p->pid,p->time_allotment,p->priority, p->level, global_tick,scheduler_locked,state_to_string(p->state),p->lock_scheduler, p->already_enqueued);
     
+    // cprintf("pid: %d time_allotment: %d priority: %d, level : %d , globaltick : %d is_lock : %d ptate: %s proc_lock:%d enqueued: %d \n",p->pid,p->time_allotment,p->priority, p->level, global_tick,scheduler_locked,state_to_string(p->state),p->lock_scheduler, p->already_enqueued);
+
     swtch(&(c->scheduler), p->context);
     switchkvm();
     // Process is done running for now.
     // It should have changed its p->state before coming back.
     c->proc = 0;
-    
-     cprintf("pid: %d time_allotment: %d priority: %d, level : %d , globaltick : %d is_lock : %d ptate: %s proc_lock:%d enqueued: %d \n",p->pid,p->time_allotment,p->priority, p->level, global_tick,scheduler_locked,state_to_string(p->state),p->lock_scheduler, p->already_enqueued);
-    
+
     if (scheduler_locked == 1 && p->state != RUNNABLE) {
       //scheduler_lockde이 되어있는데 p가 RUNNABLE이 아니라면 lock을 해제함
       schedulerUnlock(2019041703);
@@ -695,7 +698,7 @@ sleep(void *chan, struct spinlock *lk)
 
 int
 getLevel(void)
-{
+{ 
   return myproc()->level;
 }
 void
