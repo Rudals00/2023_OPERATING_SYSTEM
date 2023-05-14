@@ -557,10 +557,10 @@ scheduler(void)
     if(p->state == RUNNABLE) {
       enqueue(p, &level_queue[p->level]);
     }
-    // if(scheduler_locked!=1)
-    // {//schedulerlock이 걸려있지 않다면 p초기화
-    //   p = 0;
-    // }
+    if(scheduler_locked!=1)
+    {//schedulerlock이 걸려있지 않다면 p초기화
+      p = 0;
+    }
     //priority boosting이 필요한경우
     if (global_tick >= 100) 
     {
