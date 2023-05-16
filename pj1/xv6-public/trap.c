@@ -45,16 +45,33 @@ trap(struct trapframe *tf)
       exit();
     return;
   }
+  if(tf->trapno == T_SCHEDLOCK){
+    schedulerLock(2019041703);
+    exit();
+  }
+
+  if(tf->trapno == T_SCHEDUNLOCK){
+    schedulerUnlock(2019041703);
+    exit();
+  }
 
   switch(tf->trapno){
+  
   case T_IRQ0 + IRQ_TIMER:
     if(cpuid() == 0){
       acquire(&tickslock);
       ticks++;
+      global_tick++;
       wakeup(&ticks);
       release(&tickslock);
     }
     lapiceoi();
+
+    if(myproc() && myproc()->state == RUNNING && tf->trapno == T_IRQ0+IRQ_TIMER) {
+      myproc()->time_allotment++; // time_allotment 증가
+      
+    }
+    
     break;
   case T_IRQ0 + IRQ_IDE:
     ideintr();

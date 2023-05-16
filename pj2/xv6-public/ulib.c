@@ -104,11 +104,3 @@ memmove(void *vdst, const void *vsrc, int n)
     *dst++ = *src++;
   return vdst;
 }
-
-// void yield(void) {
-//   yield();
-// }
-
-// int getLevel(void){
-//   return getLevel();
-// }
