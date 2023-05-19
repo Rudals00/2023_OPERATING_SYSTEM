@@ -89,3 +89,34 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+// int
+// sys_thread_create(void)
+// {
+//   thread_t *thread;
+//   void *(*start_routine)(void*);
+//   void *arg;
+
+//   // getting the arguments passed from user space
+//   if(argptr(0, (void*)&thread, sizeof(thread_t)) < 0 ||
+//      argptr(1, (void*)&start_routine, sizeof(start_routine)) < 0 ||
+//      argptr(2, (void*)&arg, sizeof(arg)) < 0)
+//     return -1;
+
+//   return thread_create(thread, start_routine, arg);
+// }
+
+int
+sys_thread_create(void)
+{
+  thread_t *thread;
+  void *(*start_routine)(void *);
+  void *arg;
+  if(argptr(0,(char **)&thread,sizeof(thread)) < 0)
+    return -1;
+  if(argptr(1,(char **)&start_routine,sizeof(start_routine)) < 0)
+    return -1;
+  if(argptr(2,(char **)&arg,sizeof(arg)) < 0)
+    return -1;
+  return thread_create(thread,start_routine,arg);
+}

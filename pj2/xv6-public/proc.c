@@ -88,6 +88,10 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  p->is_thread = 0;
+  p->tid = 0;
+  p->create_num = 0;
+  p->current_thread = p;
 
   release(&ptable.lock);
 
@@ -111,7 +115,7 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
-
+  p->main_thread = p;
   return p;
 }
 
@@ -311,7 +315,7 @@ wait(void)
   }
 }
 
-//PAGEBREAK: 42
+// PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -319,13 +323,11 @@ wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
-void
-scheduler(void)
-{
+void scheduler(void) {
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
-  
+
   for(;;){
     // Enable interrupts on this processor.
     sti();
@@ -333,27 +335,72 @@ scheduler(void)
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
+        if(p->state != RUNNABLE)
         continue;
+      
+    struct proc *current_thread = p->main_thread->current_thread;
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
+    do {
+        current_thread = current_thread->next_thread;
+        if (!current_thread)
+            current_thread = p->main_thread;
+    } while (current_thread->state != RUNNABLE);
 
-      swtch(&(c->scheduler), p->context);
+    p->main_thread->current_thread = current_thread;
+
+      c->proc = current_thread;
+      switchuvm(current_thread);
+      current_thread->state = RUNNING;
+
+      swtch(&(c->scheduler), current_thread->context);
       switchkvm();
 
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       c->proc = 0;
+
+      // Move to the next thread or loop back to the main thread
     }
     release(&ptable.lock);
-
   }
 }
+
+// void
+// scheduler(void)
+// {
+//   struct proc *p;
+//   struct cpu *c = mycpu();
+//   c->proc = 0;
+  
+//   for(;;){
+//     // Enable interrupts on this processor.
+//     sti();
+
+//     // Loop over process table looking for process to run.
+//     acquire(&ptable.lock);
+//     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+//       if(p->state != RUNNABLE)
+//         continue;
+
+//       // Switch to chosen process.  It is the process's job
+//       // to release ptable.lock and then reacquire it
+//       // before jumping back to us.
+//       c->proc = p;
+//       switchuvm(p);
+//       p->state = RUNNING;
+
+//       swtch(&(c->scheduler), p->context);
+//       switchkvm();
+
+//       // Process is done running for now.
+//       // It should have changed its p->state before coming back.
+//       c->proc = 0;
+//     }
+//     release(&ptable.lock);
+
+//   }
+// }
+
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores
@@ -533,7 +580,78 @@ procdump(void)
   }
 }
 
+int thread_create(thread_t *thread, void *(*start_routine)(void*), void *arg) {
+    struct proc *np;
+    struct proc *curproc = myproc();
+    struct proc *mainThread = curproc->main_thread;
+    uint usp;
+    
+    // Allocate process.
+    if((np = allocproc()) == 0){
+      return -1;
+    }
+    np->main_thread = mainThread;
+    if(curproc->is_thread) np->parent = curproc;
+    else np->parent= mainThread->parent;
+    np->pid = mainThread->pid; // thread shares PID with parent process
+    *thread=++mainThread->create_num; // set the thread_t pointer to the new thread's TID
+    np->tid = mainThread->create_num; 
+    np->pgdir = mainThread->pgdir; // thread shares page table with parent process
+    *np->tf = *curproc->tf;
+    np->sz = mainThread->sz;
+    // Clear %eax so that fork returns 0 in the child.
+    np->tf->eax = 0;
 
-int thread_create(thread_t *thread, void *(*start_routine)(void *), void *arg);
-void thread_exit(void *retval);
+    // Allocate kernel stack for the thread
+    if((np->kstack = kalloc()) == 0){
+        np->state = UNUSED;
+        return -1;
+    }
+
+    // Allocate user stack for the thread.
+    np->sz = PGROUNDUP(np->sz);
+    if((np->sz = allocuvm(np->pgdir, np->sz, np->sz + 2*PGSIZE)) == 0){
+        np->state = UNUSED;
+        return -1;
+    }
+    clearpteu(np->pgdir, (char*)(np->sz - 2*PGSIZE));
+    
+   
+    np->tf->eip = (uint)start_routine; // set instruction pointer to start routine
+    usp = np->sz;
+    usp -= 8;
+    uint ustack[4];
+    ustack[0] = 0xffffffff;
+    ustack[1] = (uint)arg;
+
+    // np->tf->esp -= 8; // move stack pointer to make room for the argument
+    if(copyout(np->pgdir, usp, ustack, 8) < 0){
+        np->state = UNUSED;
+        return -1;
+    } // push argument onto the stack
+    np->tf->esp = (uint)usp;
+
+    for(int i = 0; i < NOFILE; i++)
+        if(curproc->ofile[i])
+          np->ofile[i] = filedup(curproc->ofile[i]);
+    np->cwd = idup(curproc->cwd);
+
+    safestrcpy(np->name, mainThread->name, sizeof(mainThread->name));
+
+    acquire(&ptable.lock);
+
+    struct proc *p;
+    for (p = curproc; p->next_thread != 0; p = p->next_thread);
+    p->next_thread = np;
+    np->next_thread = 0;
+
+    np->state = RUNNABLE;
+    np->is_thread = 1;
+
+    release(&ptable.lock);
+
+    return 0;
+}
+
+
 int thread_join(thread_t thread, void **retval);

@@ -1,6 +1,8 @@
 {
     "files.associations": {
-        "fcntl.h": "c"
+        "fcntl.h": "c",
+        "defs.h": "c",
+        "thread_test": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }
