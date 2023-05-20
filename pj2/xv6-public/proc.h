@@ -51,6 +51,7 @@ struct proc {
   struct proc *next_thread;    // Next thread in the process
   struct proc *main_thread;    // Main thread of the process
   struct proc *current_thread;
+  struct proc *join_thread;
   int is_thread;
   int tid;
   int create_num;

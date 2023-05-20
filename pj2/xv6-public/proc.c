@@ -167,13 +167,13 @@ growproc(int n)
 
   sz = curproc->sz;
   if(n > 0){
-    if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
+    if((sz = allocuvm(curproc->main_thread->pgdir, sz, sz + n)) == 0)
       return -1;
   } else if(n < 0){
-    if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
+    if((sz = deallocuvm(curproc->main_thread->pgdir, sz, sz + n)) == 0)
       return -1;
   }
-  curproc->sz = sz;
+  curproc->main_thread->sz = sz;
   switchuvm(curproc);
   return 0;
 }
@@ -194,13 +194,13 @@ fork(void)
   }
 
   // Copy process state from proc.
-  if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
+  if((np->pgdir = copyuvm(curproc->pgdir, curproc->main_thread->sz)) == 0){
     kfree(np->kstack);
     np->kstack = 0;
     np->state = UNUSED;
     return -1;
   }
-  np->sz = curproc->sz;
+  np->sz = curproc->main_thread->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
 
@@ -212,7 +212,7 @@ fork(void)
       np->ofile[i] = filedup(curproc->ofile[i]);
   np->cwd = idup(curproc->cwd);
 
-  safestrcpy(np->name, curproc->name, sizeof(curproc->name));
+  safestrcpy(np->name, curproc->main_thread->name, sizeof(curproc->main_thread->name));
 
   pid = np->pid;
 
@@ -507,7 +507,7 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
+    if(p->state == SLEEPING && p->chan == chan && p->join_thread)
       p->state = RUNNABLE;
 }
 
@@ -529,6 +529,14 @@ kill(int pid)
   struct proc *p;
 
   acquire(&ptable.lock);
+
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p -> main_thread ->pid == pid){
+      p->killed = 1;
+      if(p->state == SLEEPING)
+        p->state = RUNNABLE;
+    }
+  }
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->pid == pid){
       p->killed = 1;
@@ -591,8 +599,7 @@ int thread_create(thread_t *thread, void *(*start_routine)(void*), void *arg) {
       return -1;
     }
     np->main_thread = mainThread;
-    if(curproc->is_thread) np->parent = curproc;
-    else np->parent= mainThread->parent;
+    np->parent= mainThread->parent;
     np->pid = mainThread->pid; // thread shares PID with parent process
     *thread=++mainThread->create_num; // set the thread_t pointer to the new thread's TID
     np->tid = mainThread->create_num; 
@@ -647,11 +654,110 @@ int thread_create(thread_t *thread, void *(*start_routine)(void*), void *arg) {
 
     np->state = RUNNABLE;
     np->is_thread = 1;
+    np->join_thread = curproc;
 
     release(&ptable.lock);
 
     return 0;
 }
 
+void thread_exit(void *retval){
+  struct proc * curproc=myproc();
+  int fd;
 
-int thread_join(thread_t thread, void **retval);
+  if (curproc->main_thread == curproc)
+  {
+    exit();
+  }
+
+
+  for(fd=0;fd<NOFILE;fd++){
+    if(curproc->ofile[fd]){
+      fileclose(curproc->ofile[fd]);
+      curproc->ofile[fd]=0;
+    }
+  }
+  
+  begin_op();
+  iput(curproc->cwd);
+  end_op();
+  curproc->cwd=0;
+
+  acquire(&ptable.lock);
+  wakeup1(curproc->join_thread);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->parent == curproc){
+      p->parent = initproc;
+      if(p->state == ZOMBIE)
+        wakeup1(initproc);
+    }
+  }
+  curproc->state = ZOMBIE;
+  curproc->retval = retval;
+  sched();
+  panic("zombie exit");
+
+}
+int thread_join(thread_t thread, void **retval) {
+    struct proc *curproc = myproc();
+    struct proc *mainThread = curproc->main_thread;
+    int found = 0;
+
+    acquire(&ptable.lock);
+
+    // Find the thread to join
+    struct proc *p;
+    for (p = mainThread->next_thread; p ; p = p->next_thread) {
+        if (p->tid == thread && p->join_thread == curproc) {
+            found = 1;
+            break;
+        }
+    }
+
+    // If the thread is not found, return -1
+    if (!found) {
+        release(&ptable.lock);
+        return -1;
+    }
+
+    // Wait until the thread exits
+    while (p->state != ZOMBIE) {
+        sleep(curproc, &ptable.lock);
+    }
+
+    // Set retval if requested
+    // Retrieve the return value of the thread
+    if (retval != 0) {
+        *retval = p->retval;
+    }
+    if (p == mainThread->next_thread) {
+        mainThread->next_thread = p->next_thread;
+        if(p->main_thread->current_thread == p){
+        p->main_thread->current_thread = mainThread;
+    }} else {
+        struct proc *prev;
+        for (prev = mainThread->next_thread; prev->next_thread != p; prev = prev->next_thread)
+        {
+        prev->next_thread = p->next_thread;}
+        if(p->main_thread->current_thread == p){
+        p->main_thread->current_thread = prev;
+    }
+    }
+    
+    // Clean up the resources of the joined thread
+    kfree(p->kstack);
+    p->kstack = 0;
+    p->parent = 0;
+    p->name[0] = 0;
+    p->state = UNUSED;
+    p->tid = 0;
+    p->join_thread = 0;
+    p->main_thread = 0;
+    p->pid = 0;
+    p->next_thread = 0;
+    p->is_thread = 0;
+
+    release(&ptable.lock);
+
+    return 0;
+}
