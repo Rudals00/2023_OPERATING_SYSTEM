@@ -55,6 +55,7 @@ struct proc {
   int is_thread;
   int tid;
   int create_num;
+  void *retval; 
 };
 
 // Process memory is laid out contiguously, low addresses first:
