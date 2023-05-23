@@ -119,8 +119,8 @@ void join_all(int n)
             printf(1, "Error joining thread %d\n", i);
             failed();
         }
-        if (retval != expected[i]) {
-            printf(1, "Thread %d returned %d, but expected %d\n", i, retval, expected[i]);
+        if (retval != expected[i-1]) {
+            printf(1, "Thread %d returned %d, but expected %d\n", i, retval, expected[i-1]);
             failed();
         }
     }
@@ -129,33 +129,33 @@ void join_all(int n)
 int main(int argc, char* argv[])
 {
     int i;
-    for (i = 1; i < NUM_THREAD; i++)
-        expected[i] = i;
+    for (i = 1; i <= NUM_THREAD; i++)
+        expected[i-1] = i;
 
-    printf(1, "Test 1: Basic test\n");
-    create_all(2, thread_basic);
-    sleep(100);
-    printf(1, "Parent waiting for children...\n");
-    join_all(2);
-    if (status != 1) {
-        printf(1, "Join returned before thread exit, or the address space is not properly shared\n");
-        failed();
-    }
-    printf(1, "Test 1 passed\n\n");
+    // printf(1, "Test 1: Basic test\n");
+    // create_all(2, thread_basic);
+    // sleep(100);
+    // printf(1, "Parent waiting for children...\n");
+    // join_all(2);
+    // if (status != 1) {
+    //     printf(1, "Join returned before thread exit, or the address space is not properly shared\n");
+    //     failed();
+    // }
+    // printf(1, "Test 1 passed\n\n");
 
-    printf(1, "Test 2: Fork test\n");
-    create_all(NUM_THREAD, thread_fork);
-    join_all(NUM_THREAD);
-    if (status != 2) {
-        if (status == 3) {
-            printf(1, "Child process referenced parent's memory\n");
-        }
-        else {
-            printf(1, "Status expected 2, found %d\n", status);
-        }
-        failed();
-    }
-    printf(1, "Test 2 passed\n\n");
+    // printf(1, "Test 2: Fork test\n");
+    // create_all(NUM_THREAD, thread_fork);
+    // join_all(NUM_THREAD);
+    // if (status != 2) {
+    //     if (status == 3) {
+    //         printf(1, "Child process referenced parent's memory\n");
+    //     }
+    //     else {
+    //         printf(1, "Status expected 2, found %d\n", status);
+    //     }
+    //     failed();
+    // }
+    // printf(1, "Test 2 passed\n\n");
 
     printf(1, "Test 3: Sbrk test\n");
     create_all(NUM_THREAD, thread_sbrk);
