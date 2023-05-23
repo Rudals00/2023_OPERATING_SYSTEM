@@ -142,3 +142,56 @@ sys_thread_join(void)
     return -1;
   return thread_join(thread,retval);
 }
+
+int sys_setmemorylimit(void) {
+  int pid, limit;
+  if (argint(0, &pid) < 0 || argint(1, &limit) < 0) {
+    return -1;
+  }
+  return setmemorylimit(pid, limit);
+}
+
+int
+sys_exec2(void)
+{
+  char *path, *argv[MAXARG];
+  int i;
+  uint uargv, uarg;
+  int stacksize;
+
+  if(argstr(0, &path) < 0 || argint(1, (int*)&uargv) < 0|| argint(2, &stacksize)<0){
+    return -1;
+  }
+  memset(argv, 0, sizeof(argv));
+  for(i=0;; i++){
+    if(i >= NELEM(argv))
+      return -1;
+    if(fetchint(uargv+4*i, (int*)&uarg) < 0)
+      return -1;
+    if(uarg == 0){
+      argv[i] = 0;
+      break;
+    }
+    if(fetchstr(uarg, &argv[i]) < 0)
+      return -1;
+  }
+  return exec2(path, argv,stacksize);
+}
+
+
+int sys_processinfo(void) {
+int index;
+char *process_name;
+int *process_pid, *process_stack_pages, *process_allocated_memory, *process_memory_limit;
+
+if (argint(0, &index) < 0 || argptr(1, (void *)&process_name, sizeof(char *)) < 0 ||
+argptr(2, (void *)&process_pid, sizeof(int *)) < 0 ||
+argptr(3, (void *)&process_stack_pages, sizeof(int *)) < 0 ||
+argptr(4, (void *)&process_allocated_memory, sizeof(int *)) < 0 ||
+argptr(5, (void *)&process_memory_limit, sizeof(int *)) < 0) {
+return -1;
+}
+
+int result = processinfo(index, process_name, process_pid, process_stack_pages, process_allocated_memory, process_memory_limit);
+return result;
+}

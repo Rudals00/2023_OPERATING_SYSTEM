@@ -56,6 +56,7 @@ struct proc {
   int tid;
   int create_num;
   void *retval; 
+  int memory_limit;
 };
 
 // Process memory is laid out contiguously, low addresses first:

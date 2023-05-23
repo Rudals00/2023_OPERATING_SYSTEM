@@ -26,6 +26,9 @@ int uptime(void);
 int thread_create(thread_t *, void *(*)(void*), void *);
 void thread_exit(void *);
 int thread_join(thread_t , void **);
+int setmemorylimit(int, int);
+int exec2(char*, char**, int);
+int processinfo(int, char *, int*, int *, int *,int *);
 
 
 // ulib.c

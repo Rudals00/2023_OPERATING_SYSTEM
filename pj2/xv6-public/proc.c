@@ -168,11 +168,21 @@ growproc(int n)
   acquire(&ptable.lock);
   sz = curproc->main_thread->sz;
   if(n > 0){
-    if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
+    uint new_sz = sz + n;
+    uint memory_limit = curproc->main_thread->memory_limit;
+    if (memory_limit > 0 && new_sz > memory_limit) {
+      release(&ptable.lock);
+      return -1;  // Exceeds memory limit, return error
+    }
+    if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0){
+      release(&ptable.lock);
       return -1;
+    }
   } else if(n < 0){
-    if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
+    if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0){
+      release(&ptable.lock);
       return -1;
+    }
   }
   struct proc* p;
   for(p = curproc->main_thread; p ; p= p->next_thread)
@@ -783,6 +793,14 @@ int thread_create(thread_t *thread, void *(*start_routine)(void*), void *arg) {
     sz=mainThread->sz;
     sz=PGROUNDUP(sz);
     newsz = allocuvm(curproc->pgdir, sz, sz + 2*PGSIZE);
+
+    // Check if the new size exceeds the memory limit
+    uint memory_limit = mainThread->memory_limit;
+    if (memory_limit > 0 && newsz > memory_limit) {
+      release(&ptable.lock);
+      return -1;  // Exceeds memory limit, return error
+    }
+
     np->sz = newsz;
     mainThread->sz = newsz;
     clearpteu(curproc->pgdir, (char*)(newsz - 2*PGSIZE));
@@ -986,3 +1004,54 @@ void kill_for_exec(struct proc * curproc){
   release(&ptable.lock);
 }
 
+int setmemorylimit(int pid, int limit) {
+  struct proc *p;
+  acquire(&ptable.lock);
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if (p->pid == pid&&p->is_thread==0) {
+      // Check if the limit is valid
+      if (limit < 0)
+        return -1;
+
+      // Check if the process exists
+      if (p->state == UNUSED)
+        return -1;
+
+      // Check if the process is already using more memory than the new limit
+      if (limit < p->sz)
+        return -1;
+
+      // Update the memory limit
+      p->main_thread->memory_limit = limit;
+      release(&ptable.lock);
+      return 0;
+    }
+  }
+  release(&ptable.lock);
+  return -1;
+}
+
+int processinfo(int index, char *process_name, int *process_pid, int *process_stack_pages, int *process_allocated_memory, int *process_memory_limit ) {
+  if(index>=NPROC) return -1;
+  struct proc *p;
+  acquire(&ptable.lock);
+  p=ptable.proc;
+  while(index>0){
+    p++;
+    index--;
+  }
+  if(p->is_thread&&p) return 0;
+  else if(p->state !=UNUSED){
+    safestrcpy(process_name, p->name, strlen(p->name) + 1);
+// Copy process PID
+    *process_pid = p->pid;
+    int stack_pages = p->sz / PGSIZE;
+    *process_stack_pages = stack_pages;
+    *process_allocated_memory = p->sz;
+    *process_memory_limit = p->main_thread->memory_limit;
+    release(&ptable.lock);
+    return 1;
+  }
+  release(&ptable.lock);
+  return -1;
+}
