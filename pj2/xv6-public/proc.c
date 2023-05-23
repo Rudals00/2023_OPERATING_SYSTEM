@@ -761,35 +761,42 @@ int thread_create(thread_t *thread, void *(*start_routine)(void*), void *arg) {
     struct proc *np;
     struct proc *curproc = myproc();
     struct proc *mainThread=curproc->main_thread;
-    uint usp;
+    uint usp,sz,newsz;
     
     // Allocate process.
     if((np = allocproc()) == 0){
       return -1;
     }
+    acquire(&ptable.lock);
     np->main_thread = mainThread;
     np->parent= mainThread->parent;
     np->pid = mainThread->pid; // thread shares PID with parent process
     *thread=++mainThread->create_num; // set the thread_t pointer to the new thread's TID
     np->tid = mainThread->create_num; 
-    np->pgdir = mainThread->pgdir; // thread shares page table with parent process
-    *np->tf = *curproc->tf;
+    np->pgdir = curproc->pgdir; // thread shares page table with parent process
     // Clear %eax so that fork returns 0 in the child.
-    np->tf->eax = 0;
 
     // Allocate user stack for the thread.
     // mainThread->sz = PGROUNDUP(mainThread->sz);
     // acquire(&ptable.lock);
-    if((mainThread->sz = allocuvm(np->pgdir, mainThread->sz, mainThread->sz + 2*PGSIZE)) == 0){
-        return -1;
-    }
-    clearpteu(np->pgdir, (char*)(mainThread->sz - 2*PGSIZE));
-    np->sz = mainThread->sz;
+
+    sz=mainThread->sz;
+    sz=PGROUNDUP(sz);
+    newsz = allocuvm(curproc->pgdir, sz, sz + 2*PGSIZE);
+    np->sz = newsz;
+    mainThread->sz = newsz;
+    clearpteu(curproc->pgdir, (char*)(newsz - 2*PGSIZE));
+    // if((mainThread->sz = allocuvm(np->pgdir, mainThread->sz, mainThread->sz + 2*PGSIZE)) == 0){
+    //     return -1;
+    // }
+    // clearpteu(np->pgdir, (char*)(mainThread->sz - 2*PGSIZE));
+    // np->sz = mainThread->sz;
     // release(&ptable.lock);
     
-   
+   *np->tf = *curproc->tf;
+  //  np->tf->eax = 0;
     np->tf->eip = (uint)start_routine; // set instruction pointer to start routine
-    usp = np->sz;
+    usp = newsz;
     usp -= 8;
     uint ustack[4];
     ustack[0] = 0xffffffff;
@@ -801,14 +808,13 @@ int thread_create(thread_t *thread, void *(*start_routine)(void*), void *arg) {
         return -1;
     } // push argument onto the stack
     np->tf->esp = (uint)usp;
-
+    release(&ptable.lock);
     for(int i = 0; i < NOFILE; i++)
-        if(mainThread->ofile[i])
-          np->ofile[i] = filedup(mainThread->ofile[i]);
-    np->cwd = idup(mainThread->cwd);
+        if(curproc->ofile[i])
+          np->ofile[i] = filedup(curproc->ofile[i]);
+    np->cwd = idup(curproc->cwd);
 
-    safestrcpy(np->name, mainThread->name, sizeof(mainThread->name));
-
+    safestrcpy(np->name, curproc->name, sizeof(curproc->name));
     acquire(&ptable.lock);
     struct proc *p;
     for (p = curproc; p->next_thread != 0; p = p->next_thread);
@@ -818,7 +824,10 @@ int thread_create(thread_t *thread, void *(*start_routine)(void*), void *arg) {
     np->state = RUNNABLE;
     np->is_thread = 1;
     np->join_thread = curproc;
-
+    for(p = curproc->main_thread; p ; p= p->next_thread)
+  {
+    p->sz = newsz;
+  }
     release(&ptable.lock);
     return 0;
 }

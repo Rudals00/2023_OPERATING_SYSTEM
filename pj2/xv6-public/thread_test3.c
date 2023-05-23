@@ -449,23 +449,22 @@ exectest(void)
 void*
 sbrkthreadmain(void *arg)
 {
-  // int tid = (int)arg;
-  // char *oldbrk;
-  // char *end;
-  // char *c;
-  // oldbrk = sbrk(1000);
-  // end = oldbrk + 1000;
-  // for (c = oldbrk; c < end; c++){
-  //   *c = tid+1;
-  // }
-  sbrk(1000);
+  int tid = (int)arg;
+  char *oldbrk;
+  char *end;
+  char *c;
+  oldbrk = sbrk(1000);
+  end = oldbrk + 1000;
+  for (c = oldbrk; c < end; c++){
+    *c = tid+1;
+  }
   sleep(1);
-  // for (c = oldbrk; c < end; c++){
-  //   if (*c != tid+1){
-  //     printf(1, "panic at sbrkthreadmain\n");
-  //     exit();
-  //   }
-  // }
+  for (c = oldbrk; c < end; c++){
+    if (*c != tid+1){
+      printf(1, "panic at sbrkthreadmain\n");
+      exit();
+    }
+  }
   thread_exit(0);
 
   return 0;
