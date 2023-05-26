@@ -183,7 +183,6 @@ UPROGS=\
 	_zombie\
 	_thread_test\
 	_thread_test2\
-	_thread_test3\
 	_pmanager\
 
 fs.img: mkfs README $(UPROGS)

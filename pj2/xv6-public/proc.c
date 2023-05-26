@@ -88,12 +88,12 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  //thread 관련 초기화
   p->is_thread = 0;
   p->tid = 0;
   p->create_num = 0;
   p->current_thread = p;
   p->main_thread = p;
-
   release(&ptable.lock);
 
   // Allocate kernel stack.
@@ -172,7 +172,7 @@ growproc(int n)
     uint memory_limit = curproc->main_thread->memory_limit;
     if (memory_limit > 0 && new_sz > memory_limit) {
       release(&ptable.lock);
-      return -1;  // Exceeds memory limit, return error
+      return -1;  // 메모리 limit 확인후 에러발생시 -1 return
     }
     if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0){
       release(&ptable.lock);
@@ -188,7 +188,7 @@ growproc(int n)
   for(p = curproc->main_thread; p ; p= p->next_thread)
   {
     p->sz = sz;
-  }
+  }//변경된 sz값 해당 프로세스의 thread에 모두 적용
   release(&ptable.lock);
   switchuvm(curproc);
   return 0;
@@ -241,49 +241,6 @@ fork(void)
   return pid;
 }
 
-// int
-// fork(void)
-// {
-//   int i, pid;
-//   struct proc *np;
-//   struct proc *curproc = myproc();
-
-//   // Allocate process.
-//   if((np = allocproc()) == 0){
-//     return -1;
-//   }
-
-//   // Copy process state from proc.
-//   if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
-//     kfree(np->kstack);
-//     np->kstack = 0;
-//     np->state = UNUSED;
-//     return -1;
-//   }
-//   np->sz = curproc->sz;
-//   np->parent = curproc;
-//   *np->tf = *curproc->tf;
-
-//   // Clear %eax so that fork returns 0 in the child.
-//   np->tf->eax = 0;
-
-//   for(i = 0; i < NOFILE; i++)
-//     if(curproc->ofile[i])
-//       np->ofile[i] = filedup(curproc->ofile[i]);
-//   np->cwd = idup(curproc->cwd);
-
-//   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
-
-//   pid = np->pid;
-
-//   acquire(&ptable.lock);
-
-//   np->state = RUNNABLE;
-
-//   release(&ptable.lock);
-
-//   return pid;
-// }
 
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
@@ -345,7 +302,7 @@ exit(void)
     p->next_thread = 0;
     p->is_thread = 0;
     }
-  }
+  }//exit을 호출한 process내의 모든 thread의 자원할당을 해제
 
   // Parent might be sleeping in wait().
   wakeup1(curproc->parent);
@@ -365,48 +322,6 @@ exit(void)
   panic("zombie exit");
 }
 
-// void
-// exit(void)
-// {
-//   struct proc *curproc = myproc();
-//   struct proc *p;
-//   int fd;
-
-//   if(curproc == initproc)
-//     panic("init exiting");
-
-//   // Close all open files.
-//   for(fd = 0; fd < NOFILE; fd++){
-//     if(curproc->ofile[fd]){
-//       fileclose(curproc->ofile[fd]);
-//       curproc->ofile[fd] = 0;
-//     }
-//   }
-
-//   begin_op();
-//   iput(curproc->cwd);
-//   end_op();
-//   curproc->cwd = 0;
-
-//   acquire(&ptable.lock);
-
-//   // Parent might be sleeping in wait().
-//   wakeup1(curproc->parent);
-
-//   // Pass abandoned children to init.
-//   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-//     if(p->parent == curproc){
-//       p->parent = initproc;
-//       if(p->state == ZOMBIE)
-//         wakeup1(initproc);
-//     }
-//   }
-
-//   // Jump into the scheduler, never to return.
-//   curproc->state = ZOMBIE;
-//   sched();
-//   panic("zombie exit");
-// }
 
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
@@ -452,56 +367,6 @@ wait(void)
   }
 }
 
-// int
-// wait(void)
-// {
-//   struct proc *p;
-//   int havekids, pid;
-//   struct proc *curproc = myproc();
-  
-//   acquire(&ptable.lock);
-//   for(;;){
-//     // Scan through table looking for exited children.
-//     havekids = 0;
-//     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-//       if(p->parent != curproc)
-//         continue;
-//       havekids = 1;
-//       if(p->state == ZOMBIE){
-//         // Found one.
-//         pid = p->pid;
-//         kfree(p->kstack);
-//         p->kstack = 0;
-//         freevm(p->pgdir);
-//         p->pid = 0;
-//         p->parent = 0;
-//         p->name[0] = 0;
-//         p->killed = 0;
-//         p->state = UNUSED;
-//         release(&ptable.lock);
-//         return pid;
-//       }
-//     }
-
-//     // No point waiting if we don't have any children.
-//     if(!havekids || curproc->killed){
-//       release(&ptable.lock);
-//       return -1;
-//     }
-
-//     // Wait for children to exit.  (See wakeup1 call in proc_exit.)
-//     sleep(curproc, &ptable.lock);  //DOC: wait-sleep
-//   }
-// }
-
-// PAGEBREAK: 42
-// Per-CPU process scheduler.
-// Each CPU calls scheduler() after setting itself up.
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run
-//  - swtch to start running that process
-//  - eventually that process transfers control
-//      via swtch back to the scheduler.
 void scheduler(void) {
   struct proc *p;
   struct cpu *c = mycpu();
@@ -517,20 +382,20 @@ void scheduler(void) {
         if(p->state != RUNNABLE)
         continue;
       
-    struct proc *current_thread = p->main_thread->current_thread;
-
+    struct proc *current_thread = p->main_thread->current_thread;//현재 프로세스의 이전까지 실행했던 thread 가져옴
+    
+    //실행가능한 다음 thread찾기
     do {
         current_thread = current_thread->next_thread;
         if (!current_thread)
             current_thread = p->main_thread;
     } while (current_thread->state != RUNNABLE);
 
-    p->main_thread->current_thread = current_thread;
+    p->main_thread->current_thread = current_thread;//current thread 업데이트
 
       c->proc = current_thread;
       switchuvm(current_thread);
       current_thread->state = RUNNING;
-      // cprintf("tid: %d\n",current_thread->tid);
       swtch(&(c->scheduler), current_thread->context);
       switchkvm();
       // Process is done running for now.
@@ -542,42 +407,6 @@ void scheduler(void) {
     release(&ptable.lock);
   }
 }
-
-// void
-// scheduler(void)
-// {
-//   struct proc *p;
-//   struct cpu *c = mycpu();
-//   c->proc = 0;
-  
-//   for(;;){
-//     // Enable interrupts on this processor.
-//     sti();
-
-//     // Loop over process table looking for process to run.
-//     acquire(&ptable.lock);
-//     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-//       if(p->state != RUNNABLE)
-//         continue;
-
-//       // Switch to chosen process.  It is the process's job
-//       // to release ptable.lock and then reacquire it
-//       // before jumping back to us.
-//       c->proc = p;
-//       switchuvm(p);
-//       p->state = RUNNING;
-
-//       swtch(&(c->scheduler), p->context);
-//       switchkvm();
-
-//       // Process is done running for now.
-//       // It should have changed its p->state before coming back.
-//       c->proc = 0;
-//     }
-//     release(&ptable.lock);
-
-//   }
-// }
 
 
 // Enter scheduler.  Must hold only ptable.lock
@@ -633,7 +462,6 @@ forkret(void)
     iinit(ROOTDEV);
     initlog(ROOTDEV);
   }
-
   // Return to "caller", actually trapret (see allocproc).
 }
 
@@ -773,67 +601,61 @@ int thread_create(thread_t *thread, void *(*start_routine)(void*), void *arg) {
     struct proc *mainThread=curproc->main_thread;
     uint usp,sz,newsz;
     
-    // Allocate process.
+    // 프로세스 할당
     if((np = allocproc()) == 0){
       return -1;
     }
     acquire(&ptable.lock);
-    np->main_thread = mainThread;
-    np->parent= mainThread->parent;
-    np->pid = mainThread->pid; // thread shares PID with parent process
-    *thread=++mainThread->create_num; // set the thread_t pointer to the new thread's TID
-    np->tid = mainThread->create_num; 
-    np->pgdir = curproc->pgdir; // thread shares page table with parent process
+    np->main_thread = mainThread; //mainthread 지정
+    np->parent= mainThread->parent; //부모 프로세스 지정
+    np->pid = mainThread->pid; // mainthread와 pid공유
+    *thread=++mainThread->create_num; // thread 번호 저장
+    np->tid = mainThread->create_num; // thread 번호 tid에 저장
+    np->pgdir = curproc->pgdir; // pgdir 복사
     // Clear %eax so that fork returns 0 in the child.
 
-    // Allocate user stack for the thread.
-    // mainThread->sz = PGROUNDUP(mainThread->sz);
-    // acquire(&ptable.lock);
-
-    sz=mainThread->sz;
+    // thread 스택 공간 확보
+    sz=mainThread->sz; 
     sz=PGROUNDUP(sz);
     newsz = allocuvm(curproc->pgdir, sz, sz + 2*PGSIZE);
 
-    // Check if the new size exceeds the memory limit
+    // 메모리 limit check
     uint memory_limit = mainThread->memory_limit;
     if (memory_limit > 0 && newsz > memory_limit) {
       release(&ptable.lock);
-      return -1;  // Exceeds memory limit, return error
+      return -1;  // 메모리 제한 초과시, 오류 반환
     }
 
     np->sz = newsz;
     mainThread->sz = newsz;
     clearpteu(curproc->pgdir, (char*)(newsz - 2*PGSIZE));
-    // if((mainThread->sz = allocuvm(np->pgdir, mainThread->sz, mainThread->sz + 2*PGSIZE)) == 0){
-    //     return -1;
-    // }
-    // clearpteu(np->pgdir, (char*)(mainThread->sz - 2*PGSIZE));
-    // np->sz = mainThread->sz;
-    // release(&ptable.lock);
     
+    //유저 스택 값 넣기
    *np->tf = *curproc->tf;
-  //  np->tf->eax = 0;
-    np->tf->eip = (uint)start_routine; // set instruction pointer to start routine
+    np->tf->eip = (uint)start_routine; // start routine 지정
     usp = newsz;
     usp -= 8;
     uint ustack[4];
     ustack[0] = 0xffffffff;
     ustack[1] = (uint)arg;
 
-    // np->tf->esp -= 8; // move stack pointer to make room for the argument
+    // 스택 포인터 이동하여 인자공간 확보
     if(copyout(np->pgdir, usp, ustack, 8) < 0){
         np->state = UNUSED;
         return -1;
-    } // push argument onto the stack
+    } // 스택에 인자 입력
     np->tf->esp = (uint)usp;
-    release(&ptable.lock);
+
+    // 파일 복사
     for(int i = 0; i < NOFILE; i++)
         if(curproc->ofile[i])
           np->ofile[i] = filedup(curproc->ofile[i]);
     np->cwd = idup(curproc->cwd);
 
     safestrcpy(np->name, curproc->name, sizeof(curproc->name));
-    acquire(&ptable.lock);
+
+
+    //생성된 thread linkedlist에 달아주기
     struct proc *p;
     for (p = curproc; p->next_thread != 0; p = p->next_thread);
     p->next_thread = np;
@@ -841,11 +663,12 @@ int thread_create(thread_t *thread, void *(*start_routine)(void*), void *arg) {
 
     np->state = RUNNABLE;
     np->is_thread = 1;
-    np->join_thread = curproc;
+    np->join_thread = curproc; //join을 위한 현재 프로세스 정보 저장
+    //프로세스 내의 sz 복사
     for(p = curproc->main_thread; p ; p= p->next_thread)
-  {
-    p->sz = newsz;
-  }
+    {
+      p->sz = newsz;
+    }
     release(&ptable.lock);
     return 0;
 }
@@ -854,13 +677,13 @@ void thread_exit(void *retval){
   struct proc * curproc=myproc();
   struct proc * p;
   int fd;
-
+  // 만약 현재 프로세스가 메인 스레드라면, exit를 호출
   if (curproc->main_thread == curproc)
   {
     exit();
   }
 
-
+  // 현재 프로세스에서 열려있는 모든 파일을 닫음
   for(fd=0;fd<NOFILE;fd++){
     if(curproc->ofile[fd]){
       fileclose(curproc->ofile[fd]);
@@ -868,13 +691,19 @@ void thread_exit(void *retval){
     }
   }
   
+  // 작업 시작
   begin_op();
+  // 현재 프로세스의 작업 디렉토리를 닫음
   iput(curproc->cwd);
+  // 작업 종료
   end_op();
   curproc->cwd=0;
 
+  // 프로세스 테이블 잠금
   acquire(&ptable.lock);
-  wakeup1(curproc->join_thread);
+  // join을 기다리는 스레드 깨우기
+  wakeup1(curproc->join_thread); 
+  // 모든 자식 프로세스를 확인해서 부모 프로세스를 initproc으로 변경하고, 상태가 ZOMBIE라면 initproc 깨우기
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->parent == curproc){
       p->parent = initproc;
@@ -882,12 +711,16 @@ void thread_exit(void *retval){
         wakeup1(initproc);
     }
   }
+  // 현재 프로세스 상태를 ZOMBIE로 변경
   curproc->state = ZOMBIE;
+  // 반환값 설정
   curproc->retval = retval;
+  // 스케줄러 호출
   sched();
+  // 이 위치에 도달했다면 문제가 있는 것이므로 panic 호출
   panic("zombie exit");
+  }
 
-}
 int thread_join(thread_t thread, void **retval) {
     struct proc *curproc = myproc();
     struct proc *mainThread = curproc->main_thread;
@@ -895,7 +728,7 @@ int thread_join(thread_t thread, void **retval) {
 
     acquire(&ptable.lock);
 
-    // Find the thread to join
+    // join 할 thread 찾기
     struct proc *p;
     for (p = mainThread->next_thread; p ; p = p->next_thread) {
         if (p->tid == thread && p->join_thread == curproc) {
@@ -904,37 +737,39 @@ int thread_join(thread_t thread, void **retval) {
         }
     }
 
-    // If the thread is not found, return -1
+    // thread를 찾지 못하면 -1 반환
     if (!found) {
         release(&ptable.lock);
         return -1;
     }
 
-    // Wait until the thread exits
+    // thread가 종료될 때까지 기다림
     while (p->state != ZOMBIE) {
         sleep(curproc, &ptable.lock);
     }
 
-    // Set retval if requested
-    // Retrieve the return value of the thread
+    // 요청된 경우 retval 설정
+    // thread의 반환 값을 가져옴
     if (retval != 0) {
         *retval = p->retval;
     }
+
+    // thread 리스트에서 제거
     if (p == mainThread->next_thread) {
         mainThread->next_thread = p->next_thread;
         if(p->main_thread->current_thread == p){
-        p->main_thread->current_thread = mainThread;
-    }} else {
+            p->main_thread->current_thread = mainThread;
+        } 
+    } else {
         struct proc *prev;
         for (prev = mainThread->next_thread; prev->next_thread != p; prev = prev->next_thread)
-        {
-        prev->next_thread = p->next_thread;}
+            prev->next_thread = p->next_thread;
         if(p->main_thread->current_thread == p){
-        p->main_thread->current_thread = prev;
-    }
+            p->main_thread->current_thread = prev;
+        }
     }
     
-    // Clean up the resources of the joined thread
+    // join된 thread의 자원회수
     kfree(p->kstack);
     p->kstack = 0;
     p->parent = 0;
@@ -949,39 +784,56 @@ int thread_join(thread_t thread, void **retval) {
 
     release(&ptable.lock);
 
-    return 0;
+    return 0; // 성공적으로 thread join 완료
 }
 
-void kill_for_exec(struct proc * curproc){
+// 현재 프로세스(curproc)에 대해 exec를 위한 종료 과정을 수행하는 함수
+void 
+kill_for_exec(struct proc * curproc){
   struct proc *p;
   struct proc *next_thread;
   int fd;
-  // acquire(&ptable.lock);
+
   for(p = curproc->main_thread; p; p= next_thread ){
     next_thread = p->next_thread;
+
+    // 현재 스레드가 현재 프로세스가 아닌 경우
     if(p != curproc){
+
+      // 스레드 상태가 ZOMBIE가 아닌 경우
       if(p->state !=ZOMBIE){
+
+        // 열려있는 파일을 모두 닫는다
         for(fd = 0; fd < NOFILE; fd++) {
-        if(p->ofile[fd]) {
-          fileclose(p->ofile[fd]);
-          p->ofile[fd] = 0;
+          if(p->ofile[fd]) {
+            fileclose(p->ofile[fd]);
+            p->ofile[fd] = 0;
+          }
         }
-      }
-      
-      begin_op();
-      iput(p->cwd);
-      end_op();
-      p->cwd = 0;
-        }
+
+        // 현재 작업 디렉토리를 해제
+        begin_op();
+        iput(p->cwd);
+        end_op();
+        p->cwd = 0;
       }
     }
+  }
 
-    acquire(&ptable.lock);
-    for(p = curproc->main_thread; p; p= next_thread ){
-      next_thread = p->next_thread;
-      if(p != curproc){
+  acquire(&ptable.lock);
+
+  // 다시 한번 현재 프로세스의 메인 스레드를 순회하며
+  for(p = curproc->main_thread; p; p= next_thread ){
+    next_thread = p->next_thread;
+
+    // 현재 스레드가 현재 프로세스가 아닌 경우
+    if(p != curproc){
+
+      // 프로세스의 커널 스택을 해제
       kfree(p->kstack);
       p->kstack = 0;
+
+      // 프로세스 정보를 초기화
       p->parent = 0;
       p->name[0] = 0;
       p->state = UNUSED;
@@ -991,9 +843,10 @@ void kill_for_exec(struct proc * curproc){
       p->pid = 0;
       p->next_thread = 0;
       p->is_thread = 0;
-      }
     }
+  }
   
+  // 현재 프로세스 정보를 업데이트
   curproc->main_thread = curproc;
   curproc->is_thread = 0;
   curproc->tid = 0;
@@ -1004,29 +857,36 @@ void kill_for_exec(struct proc * curproc){
   release(&ptable.lock);
 }
 
+// 프로세스의 메모리 제한을 설정하는 함수
 int setmemorylimit(int pid, int limit) {
   struct proc *p;
   acquire(&ptable.lock);
+
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-    if (p->pid == pid&&p->is_thread==0) {
-      // Check if the limit is valid
+    
+    // 해당 pid를 가진 프로세스를 찾고, thread가 아닌 경우에만 메모리 제한을 설정
+    if (p->pid == pid && p->is_thread == 0) {
+
+      // 제한 값이 유효한지 확인
       if (limit < 0)
         return -1;
 
-      // Check if the process exists
+      // 프로세스가 존재하는지 확인
       if (p->state == UNUSED)
         return -1;
 
-      // Check if the process is already using more memory than the new limit
+      // 이미 프로세스가 새로 설정할 제한값보다 많은 메모리를 사용하고 있는지 확인
       if (limit < p->sz)
         return -1;
 
-      // Update the memory limit
+      // 메모리 limit 업데이트
       p->main_thread->memory_limit = limit;
       release(&ptable.lock);
       return 0;
     }
   }
+
+  // 해당 pid를 가진 프로세스를 찾지 못한 경우, -1 반환
   release(&ptable.lock);
   return -1;
 }

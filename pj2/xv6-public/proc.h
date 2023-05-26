@@ -48,15 +48,15 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-  struct proc *next_thread;    // Next thread in the process
-  struct proc *main_thread;    // Main thread of the process
-  struct proc *current_thread;
-  struct proc *join_thread;
-  int is_thread;
-  int tid;
-  int create_num;
-  void *retval; 
-  int memory_limit;
+  struct proc *next_thread;    // thread를 linkedlist를 위한 프로세스 포인터
+  struct proc *main_thread;    // Main thread
+  struct proc *current_thread; // 프로세스 내에서 현재까지 실행된 thread
+  struct proc *join_thread;    // 프로세스가 생성되고 join을 해줄 thread
+  int is_thread;               // thread이면 1 mainthread이면 0
+  int tid;                     // thread의 tid
+  int create_num;              // tid를 위해 프로세스에서 생성했던 thread수
+  void *retval;                // 반환값
+  int memory_limit;            // memory_limit
 };
 
 // Process memory is laid out contiguously, low addresses first:
