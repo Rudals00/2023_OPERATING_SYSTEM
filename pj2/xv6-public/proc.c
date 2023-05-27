@@ -860,17 +860,13 @@ kill_for_exec(struct proc * curproc){
 // 프로세스의 메모리 제한을 설정하는 함수
 int setmemorylimit(int pid, int limit) {
   struct proc *p;
+  if(limit < 0) {
+    return -1;} // 제한 값이 유효한지 확인
   acquire(&ptable.lock);
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
     
     // 해당 pid를 가진 프로세스를 찾고, thread가 아닌 경우에만 메모리 제한을 설정
     if (p->pid == pid && p->is_thread == 0) {
-
-      // 제한 값이 유효한지 확인
-      if (limit < 0){
-        release(&ptable.lock);
-        return -1;
-      }
 
       // 프로세스가 존재하는지 확인
       if (p->state == UNUSED)
