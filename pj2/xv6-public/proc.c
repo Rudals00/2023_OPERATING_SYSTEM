@@ -537,13 +537,13 @@ kill(int pid)
 
   acquire(&ptable.lock);
 
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    if(p -> main_thread ->pid == pid){
-      p->killed = 1;
-      if(p->state == SLEEPING)
-        p->state = RUNNABLE;
-    }
-  }
+  // for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+  //   if(p -> main_thread ->pid == pid){
+  //     p->killed = 1;
+  //     if(p->state == SLEEPING)
+  //       p->state = RUNNABLE;
+  //   }
+  // }
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->pid == pid){
       p->killed = 1;
@@ -861,23 +861,30 @@ kill_for_exec(struct proc * curproc){
 int setmemorylimit(int pid, int limit) {
   struct proc *p;
   acquire(&ptable.lock);
-
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
     
     // 해당 pid를 가진 프로세스를 찾고, thread가 아닌 경우에만 메모리 제한을 설정
     if (p->pid == pid && p->is_thread == 0) {
 
       // 제한 값이 유효한지 확인
-      if (limit < 0)
+      if (limit < 0){
+        release(&ptable.lock);
         return -1;
+      }
 
       // 프로세스가 존재하는지 확인
       if (p->state == UNUSED)
+      {
+        release(&ptable.lock);
         return -1;
+      }
 
       // 이미 프로세스가 새로 설정할 제한값보다 많은 메모리를 사용하고 있는지 확인
       if (limit < p->sz)
+      {
+        release(&ptable.lock);
         return -1;
+      }
 
       // 메모리 limit 업데이트
       p->main_thread->memory_limit = limit;
@@ -885,7 +892,6 @@ int setmemorylimit(int pid, int limit) {
       return 0;
     }
   }
-
   // 해당 pid를 가진 프로세스를 찾지 못한 경우, -1 반환
   release(&ptable.lock);
   return -1;
@@ -901,7 +907,7 @@ int processinfo(int index, char *process_name, int *process_pid, int *process_st
     index--;
   }
   if(p->is_thread&&p) return 0;
-  else if(p->state !=UNUSED){
+  else if(p->state !=UNUSED && p->killed == 0){
     safestrcpy(process_name, p->name, strlen(p->name) + 1);
 // Copy process PID
     *process_pid = p->pid;

@@ -184,6 +184,11 @@ UPROGS=\
 	_thread_test\
 	_thread_test2\
 	_pmanager\
+	_thread_test3\
+	_thread_kill\
+	_thread_exit\
+	_thread_exec\
+	_hello_thread\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)

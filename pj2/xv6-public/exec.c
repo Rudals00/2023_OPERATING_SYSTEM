@@ -100,7 +100,7 @@ exec(char *path, char **argv)
 
   uint memory_limit = curproc->main_thread->memory_limit;
   if (memory_limit > 0 && sz > memory_limit) {
-    return -1;  // Exceeds memory limit, return error
+    return -1;  // 메모리 limit 확인후 에러처리
   }
   curproc->tf->eip = elf.entry;  // main
   curproc->tf->esp = sp;
@@ -180,7 +180,7 @@ exec2(char *path, char **argv, int stacksize)
   // Allocate two pages at the next page boundary.
   // Make the first inaccessible.  Use the second as the user stack.
   sz = PGROUNDUP(sz);
-  int guardpages = 1; // Number of guard pages (fixed to 1)
+  int guardpages = 1; // 가드페이지
   int stackpages = stacksize + guardpages;
   if((sz = allocuvm(pgdir, sz, sz + stackpages*PGSIZE)) == 0)
     goto bad;
