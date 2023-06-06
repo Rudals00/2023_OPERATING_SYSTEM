@@ -542,7 +542,9 @@ readi(struct inode *ip, char *dst, uint off, uint n)
 {
   uint tot, m;
   struct buf *bp;
-
+  if(ip->type == T_SYMLINK){
+    if((ip = namei((char*)(ip->addrs)))==0) return -1;
+  }
   if(ip->type == T_DEV){
     if(ip->major < 0 || ip->major >= NDEV || !devsw[ip->major].read)
       return -1;
@@ -571,7 +573,7 @@ writei(struct inode *ip, char *src, uint off, uint n)
 {
   uint tot, m;
   struct buf *bp;
-
+  
   if(ip->type == T_DEV){
     if(ip->major < 0 || ip->major >= NDEV || !devsw[ip->major].write)
       return -1;
@@ -721,18 +723,18 @@ namex(char *path, int nameiparent, char *name)
 
   while((path = skipelem(path, name)) != 0){
     ilock(ip);
-    if(ip->type == T_SYMLINK) {
-      // If inode is a symbolic link, recursively resolve the linked path
-      struct inode* link = namex(ip->symlink_path, nameiparent, name);
-      if(link == 0) {
-        iunlockput(ip);
-        return 0;
-      }
-      // We don't need the symlink inode anymore
-      iunlockput(ip);
-      // Continue with the linked inode
-      ip = link;
-    }
+    // if(ip->type == T_SYMLINK) {
+    //   // If inode is a symbolic link, recursively resolve the linked path
+    //   struct inode* link = namex(ip->symlink_path, nameiparent, name);
+    //   if(link == 0) {
+    //     iunlockput(ip);
+    //     return 0;
+    //   }
+    //   // We don't need the symlink inode anymore
+    //   iunlockput(ip);
+    //   // Continue with the linked inode
+    //   ip = link;
+    // }
     if(ip->type != T_DIR){
       iunlockput(ip);
       return 0;

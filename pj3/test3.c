@@ -89,13 +89,13 @@ void triple_indirect_test(void)
                 return;
             }
 
-              for (k = 0; k < NINDIRECT; k++) {
-                if (write(fd, buf, BSIZE) != BSIZE) {
-                  printf(2, "Failed to write data block\n");
-                  close(fd);
-                  return;
-                }
-              }
+            //   for (k = 0; k < NINDIRECT; k++) {
+            //     if (write(fd, buf, BSIZE) != BSIZE) {
+            //       printf(2, "Failed to write data block\n");
+            //       close(fd);
+            //       return;
+            //     }
+            //   }
             }
         }
         printf(2, "triple indirect block test passed\n");

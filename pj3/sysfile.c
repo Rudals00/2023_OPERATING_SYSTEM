@@ -164,26 +164,6 @@ bad:
   return -1;
 }
 
-int
-sys_symlink(void)
-{
-  char target[MAX_PATH], *link;
-  struct inode *ip;
-
-  if(argstr(0, &target) < 0 || argstr(1, &link) < 0)
-    return -1;
-
-  begin_op();
-  if((ip = create(link, T_SYMLINK, 0, 0)) == 0){
-    end_op();
-    return -1;
-  }
-  strncpy(ip->symlink_path, target, MAX_PATH);
-  iupdate(ip); // Write changes to disk
-  iunlockput(ip);
-  end_op();
-  return 0;
-}
 
 // Is the directory dp empty except for "." and ".." ?
 static int
@@ -294,13 +274,52 @@ create(char *path, short type, short major, short minor)
     if(dirlink(ip, ".", ip->inum) < 0 || dirlink(ip, "..", dp->inum) < 0)
       panic("create dots");
   }
-
   if(dirlink(dp, name, ip->inum) < 0)
     panic("create: dirlink");
 
   iunlockput(dp);
 
   return ip;
+}
+
+int
+sys_symlink(void)
+{
+  char *link, *target;
+  struct inode *dp, *ip;
+
+  if(argstr(0, &target) < 0 || argstr(1, &link) < 0)
+    return -1;
+
+  begin_op();
+  if((ip = namei(target)) == 0){
+    end_op();
+    return -1;
+  }
+
+  ilock(ip);
+  if(ip->type == T_DIR){
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+
+  ip->nlink++;
+  iupdate(ip);
+  iunlock(ip);
+
+  if((dp = create(link, T_SYMLINK, 0, 0)) == 0) 
+    return -1;
+  
+  memmove((char*)(dp->addrs), target, strlen(target));
+  
+  iupdate(dp);
+  iunlock(dp);
+
+  end_op();
+  
+  return 0;
+
 }
 
 int

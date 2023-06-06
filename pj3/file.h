@@ -8,7 +8,6 @@ struct file {
   uint off;
 };
 
-#define MAX_PATH 4096
 // in-memory copy of an inode
 struct inode {
   uint dev;           // Device number
@@ -23,8 +22,6 @@ struct inode {
   short nlink;
   uint size;
   uint addrs[NDIRECT+3];
-
-  char symlink_path[MAX_PATH]; // Symbolic link path
 };
 
 // struct inode {
