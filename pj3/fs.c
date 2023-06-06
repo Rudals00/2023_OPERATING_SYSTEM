@@ -369,11 +369,41 @@ iunlockput(struct inode *ip)
 
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
+// static uint
+// bmap(struct inode *ip, uint bn)
+// {
+//   uint addr, *a;
+//   struct buf *bp;
+
+//   if(bn < NDIRECT){
+//     if((addr = ip->addrs[bn]) == 0)
+//       ip->addrs[bn] = addr = balloc(ip->dev);
+//     return addr;
+//   }
+//   bn -= NDIRECT;
+
+//   if(bn < NINDIRECT){
+//     // Load indirect block, allocating if necessary.
+//     if((addr = ip->addrs[NDIRECT]) == 0)
+//       ip->addrs[NDIRECT] = addr = balloc(ip->dev);
+//     bp = bread(ip->dev, addr);
+//     a = (uint*)bp->data;
+//     if((addr = a[bn]) == 0){
+//       a[bn] = addr = balloc(ip->dev);
+//       log_write(bp);
+//     }
+//     brelse(bp);
+//     return addr;
+//   }
+
+//   panic("bmap: out of range");
+// }
+
 static uint
 bmap(struct inode *ip, uint bn)
 {
   uint addr, *a;
-  struct buf *bp;
+  struct buf *bp, *bp2;
 
   if(bn < NDIRECT){
     if((addr = ip->addrs[bn]) == 0)
@@ -395,6 +425,64 @@ bmap(struct inode *ip, uint bn)
     brelse(bp);
     return addr;
   }
+
+  bn -= NINDIRECT;
+
+  if(bn < DINDIRECT){
+    // Load double indirect block, allocating if necessary.
+    if((addr = ip->addrs[NDIRECT + 1]) == 0)
+      ip->addrs[NDIRECT + 1] = addr = balloc(ip->dev);
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+    if((addr = a[bn / NINDIRECT]) == 0){
+      a[bn / NINDIRECT] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+    bp2 = bread(ip->dev, addr);
+    a = (uint*)bp2->data;
+    if((addr = a[bn % NINDIRECT]) == 0){
+      a[bn % NINDIRECT] = addr = balloc(ip->dev);
+      log_write(bp2);
+    }
+    brelse(bp2);
+    return addr;
+  }
+
+  bn -= DINDIRECT;
+
+  if(bn < TINDIRECT){
+  // Load triple indirect block, allocating if necessary.
+  if((addr = ip->addrs[NDIRECT + 2]) == 0)
+    ip->addrs[NDIRECT + 2] = addr = balloc(ip->dev);
+  bp = bread(ip->dev, addr);
+  a = (uint*)bp->data;
+  uint firstIndex = bn / (NINDIRECT * NINDIRECT);
+  if((addr = a[firstIndex]) == 0){
+    a[firstIndex] = addr = balloc(ip->dev);
+    log_write(bp);
+  }
+  brelse(bp);
+
+  bp = bread(ip->dev, addr);
+  a = (uint*)bp->data;
+  uint secondIndex = (bn / NINDIRECT) % NINDIRECT;
+  if((addr = a[secondIndex]) == 0){
+    a[secondIndex] = addr = balloc(ip->dev);
+    log_write(bp);
+  }
+  brelse(bp);
+
+  bp = bread(ip->dev, addr);
+  a = (uint*)bp->data;
+  uint thirdIndex = bn % NINDIRECT;
+  if((addr = a[thirdIndex]) == 0){
+    a[thirdIndex] = addr = balloc(ip->dev);
+    log_write(bp);
+  }
+  brelse(bp);
+  return addr;
+}
 
   panic("bmap: out of range");
 }
@@ -633,6 +721,18 @@ namex(char *path, int nameiparent, char *name)
 
   while((path = skipelem(path, name)) != 0){
     ilock(ip);
+    if(ip->type == T_SYMLINK) {
+      // If inode is a symbolic link, recursively resolve the linked path
+      struct inode* link = namex(ip->symlink_path, nameiparent, name);
+      if(link == 0) {
+        iunlockput(ip);
+        return 0;
+      }
+      // We don't need the symlink inode anymore
+      iunlockput(ip);
+      // Continue with the linked inode
+      ip = link;
+    }
     if(ip->type != T_DIR){
       iunlockput(ip);
       return 0;

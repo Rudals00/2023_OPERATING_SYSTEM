@@ -204,7 +204,6 @@ writetest1(void)
       exit();
     }
   }
-
   close(fd);
 
   fd = open("big", O_RDONLY);
@@ -1150,9 +1149,10 @@ bigfile(void)
   int fd, i, total, cc;
 
   printf(1, "bigfile test\n");
-
   unlink("bigfile");
+
   fd = open("bigfile", O_CREATE | O_RDWR);
+  
   if(fd < 0){
     printf(1, "cannot create bigfile");
     exit();
@@ -1165,12 +1165,13 @@ bigfile(void)
     }
   }
   close(fd);
-
+  
   fd = open("bigfile", 0);
   if(fd < 0){
     printf(1, "cannot open bigfile\n");
     exit();
   }
+  
   total = 0;
   for(i = 0; ; i++){
     cc = read(fd, buf, 300);

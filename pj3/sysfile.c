@@ -164,6 +164,27 @@ bad:
   return -1;
 }
 
+int
+sys_symlink(void)
+{
+  char target[MAX_PATH], *link;
+  struct inode *ip;
+
+  if(argstr(0, &target) < 0 || argstr(1, &link) < 0)
+    return -1;
+
+  begin_op();
+  if((ip = create(link, T_SYMLINK, 0, 0)) == 0){
+    end_op();
+    return -1;
+  }
+  strncpy(ip->symlink_path, target, MAX_PATH);
+  iupdate(ip); // Write changes to disk
+  iunlockput(ip);
+  end_op();
+  return 0;
+}
+
 // Is the directory dp empty except for "." and ".." ?
 static int
 isdirempty(struct inode *dp)
@@ -313,7 +334,7 @@ sys_open(void)
       return -1;
     }
   }
-
+  
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
       fileclose(f);

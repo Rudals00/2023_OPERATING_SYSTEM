@@ -2,7 +2,8 @@
     "files.associations": {
         "fcntl.h": "c",
         "defs.h": "c",
-        "thread_test": "c"
+        "thread_test": "c",
+        "limits": "cpp"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }
