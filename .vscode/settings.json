@@ -3,7 +3,8 @@
         "fcntl.h": "c",
         "defs.h": "c",
         "thread_test": "c",
-        "limits": "cpp"
+        "limits": "cpp",
+        "sleeplock.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

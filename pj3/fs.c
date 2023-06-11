@@ -46,7 +46,8 @@ bzero(int dev, int bno)
 
   bp = bread(dev, bno);
   memset(bp->data, 0, BSIZE);
-  log_write(bp);
+  // log_write(bp); 
+  bp->flags|=B_DIRTY;
   brelse(bp);
 }
 
@@ -66,7 +67,8 @@ balloc(uint dev)
       m = 1 << (bi % 8);
       if((bp->data[bi/8] & m) == 0){  // Is block free?
         bp->data[bi/8] |= m;  // Mark block in use.
-        log_write(bp);
+        // log_write(bp);
+        bp->flags|=B_DIRTY;
         brelse(bp);
         bzero(dev, b + bi);
         return b + bi;
@@ -90,7 +92,8 @@ bfree(int dev, uint b)
   if((bp->data[bi/8] & m) == 0)
     panic("freeing free block");
   bp->data[bi/8] &= ~m;
-  log_write(bp);
+  // log_write(bp);
+  bp->flags|=B_DIRTY;
   brelse(bp);
 }
 
@@ -204,7 +207,8 @@ ialloc(uint dev, short type)
     if(dip->type == 0){  // a free inode
       memset(dip, 0, sizeof(*dip));
       dip->type = type;
-      log_write(bp);   // mark it allocated on the disk
+      // log_write(bp);   // mark it allocated on the disk
+      bp->flags|=B_DIRTY;
       brelse(bp);
       return iget(dev, inum);
     }
@@ -231,7 +235,8 @@ iupdate(struct inode *ip)
   dip->nlink = ip->nlink;
   dip->size = ip->size;
   memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
-  log_write(bp);
+  // log_write(bp);
+  bp->flags|=B_DIRTY;
   brelse(bp);
 }
 
@@ -420,7 +425,8 @@ bmap(struct inode *ip, uint bn)
     a = (uint*)bp->data;
     if((addr = a[bn]) == 0){
       a[bn] = addr = balloc(ip->dev);
-      log_write(bp);
+      // log_write(bp);
+      bp->flags|=B_DIRTY;
     }
     brelse(bp);
     return addr;
@@ -436,14 +442,16 @@ bmap(struct inode *ip, uint bn)
     a = (uint*)bp->data;
     if((addr = a[bn / NINDIRECT]) == 0){
       a[bn / NINDIRECT] = addr = balloc(ip->dev);
-      log_write(bp);
+      // log_write(bp);
+      bp->flags|=B_DIRTY;
     }
     brelse(bp);
     bp2 = bread(ip->dev, addr);
     a = (uint*)bp2->data;
     if((addr = a[bn % NINDIRECT]) == 0){
       a[bn % NINDIRECT] = addr = balloc(ip->dev);
-      log_write(bp2);
+      // log_write(bp2);
+      bp2->flags|=B_DIRTY;
     }
     brelse(bp2);
     return addr;
@@ -460,7 +468,8 @@ bmap(struct inode *ip, uint bn)
   uint firstIndex = bn / (NINDIRECT * NINDIRECT);
   if((addr = a[firstIndex]) == 0){
     a[firstIndex] = addr = balloc(ip->dev);
-    log_write(bp);
+    // log_write(bp);
+    bp->flags|=B_DIRTY;
   }
   brelse(bp);
 
@@ -469,7 +478,8 @@ bmap(struct inode *ip, uint bn)
   uint secondIndex = (bn / NINDIRECT) % NINDIRECT;
   if((addr = a[secondIndex]) == 0){
     a[secondIndex] = addr = balloc(ip->dev);
-    log_write(bp);
+    // log_write(bp);
+    bp->flags|=B_DIRTY;
   }
   brelse(bp);
 
@@ -478,7 +488,8 @@ bmap(struct inode *ip, uint bn)
   uint thirdIndex = bn % NINDIRECT;
   if((addr = a[thirdIndex]) == 0){
     a[thirdIndex] = addr = balloc(ip->dev);
-    log_write(bp);
+    // log_write(bp);
+    bp->flags|=B_DIRTY;
   }
   brelse(bp);
   return addr;
@@ -589,7 +600,8 @@ writei(struct inode *ip, char *src, uint off, uint n)
     bp = bread(ip->dev, bmap(ip, off/BSIZE));
     m = min(n - tot, BSIZE - off%BSIZE);
     memmove(bp->data + off%BSIZE, src, m);
-    log_write(bp);
+    // log_write(bp);
+    bp->flags|=B_DIRTY;
     brelse(bp);
   }
 

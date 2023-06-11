@@ -25,10 +25,11 @@
 #include "sleeplock.h"
 #include "fs.h"
 #include "buf.h"
-
+int total_cnt;
 struct {
   struct spinlock lock;
   struct buf buf[NBUF];
+  int isflushed;
 
   // Linked list of all buffers, through prev/next.
   // head.next is most recently used.
@@ -62,6 +63,19 @@ static struct buf*
 bget(uint dev, uint blockno)
 {
   struct buf *b;
+  
+  if(bcache.isflushed == 0 && buffer_isfull())
+  {
+    acquire(&bcache.lock);
+    bcache.isflushed = 1;
+    release(&bcache.lock);
+
+    sync();
+
+    acquire(&bcache.lock);
+    bcache.isflushed = 0;
+    release(&bcache.lock);
+  }
 
   acquire(&bcache.lock);
 
@@ -142,3 +156,37 @@ brelse(struct buf *b)
 //PAGEBREAK!
 // Blank page.
 
+int
+logDirtyBuffer(void)
+{
+  struct buf *b;
+
+  int cnt = 0;
+  acquire(&bcache.lock); 
+  for(b = bcache.head.next; b != &bcache.head; b = b->next){
+    if((b->flags & B_DIRTY)){
+      log_write(b);
+      // b->flags |= B_DIRTY;
+      cnt++;
+    }
+  }
+  release(&bcache.lock); 
+
+  return cnt;
+}
+
+int
+buffer_isfull(void)
+{
+  struct buf* b = 0;
+  int cnt = 0;
+  acquire(&bcache.lock);  // Acquire the lock
+  for(b = bcache.head.next; b != &bcache.head; b = b->next){
+    if((b->flags & B_DIRTY)){
+      cnt++;
+    }
+  }
+  release(&bcache.lock);  // Release the lock
+  if(cnt >= NBUF-3) return 1;
+  else return 0;
+}
