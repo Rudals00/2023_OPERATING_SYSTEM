@@ -25,11 +25,10 @@
 #include "sleeplock.h"
 #include "fs.h"
 #include "buf.h"
-int total_cnt;
 struct {
   struct spinlock lock;
   struct buf buf[NBUF];
-  int isflushed;
+  int isfull; //beg 함수의 재귀적호출을 막기 위한 flag
 
   // Linked list of all buffers, through prev/next.
   // head.next is most recently used.
@@ -63,17 +62,17 @@ static struct buf*
 bget(uint dev, uint blockno)
 {
   struct buf *b;
-  
-  if(bcache.isflushed == 0 && buffer_isfull())
+  //버퍼가 가득찼다면 sync호출 beget의 재귀적 호출을 막기 위해 isfull flag를 둠
+  if(bcache.isfull == 0 && buffer_isfull())
   {
     acquire(&bcache.lock);
-    bcache.isflushed = 1;
+    bcache.isfull = 1;
     release(&bcache.lock);
 
     sync();
 
     acquire(&bcache.lock);
-    bcache.isflushed = 0;
+    bcache.isfull = 0;
     release(&bcache.lock);
   }
 
@@ -156,6 +155,7 @@ brelse(struct buf *b)
 //PAGEBREAK!
 // Blank page.
 
+// dirty버퍼들을 찾아 로그에 기록하고 개수 반환
 int
 logDirtyBuffer(void)
 {
@@ -163,30 +163,32 @@ logDirtyBuffer(void)
 
   int cnt = 0;
   acquire(&bcache.lock); 
+  // 버퍼가 dirty 상태면 로그에 기록
   for(b = bcache.head.next; b != &bcache.head; b = b->next){
     if((b->flags & B_DIRTY)){
       log_write(b);
-      // b->flags |= B_DIRTY;
       cnt++;
     }
   }
   release(&bcache.lock); 
 
-  return cnt;
+  return cnt; //dirtybuffer 개수 반환
 }
 
+//버퍼 캐시가 가득 찼는지 확인
 int
 buffer_isfull(void)
 {
   struct buf* b = 0;
   int cnt = 0;
-  acquire(&bcache.lock);  // Acquire the lock
+  acquire(&bcache.lock); 
+  //버퍼가 dirty 상태면 cnt증가
   for(b = bcache.head.next; b != &bcache.head; b = b->next){
     if((b->flags & B_DIRTY)){
       cnt++;
     }
   }
-  release(&bcache.lock);  // Release the lock
-  if(cnt >= NBUF-3) return 1;
+  release(&bcache.lock);
+  if(cnt >= NBUF-3) return 1; //dirty 버퍼가 가득차있으면 1반환
   else return 0;
 }

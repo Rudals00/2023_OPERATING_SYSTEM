@@ -31,15 +31,6 @@
 
 // Contents of the header block, used for both the on-disk header block
 // and to keep track in memory of logged block# before commit.
-extern struct {
-  struct spinlock lock;
-  struct buf buf[NBUF];
-  int isflushed;
-
-  // Linked list of all buffers, through prev/next.
-  // head.next is most recently used.
-  struct buf head;
-} bcache;
 
 struct logheader {
   int n;
@@ -58,7 +49,6 @@ struct log {
 struct log log;
 
 static void recover_from_log(void);
-// static void commit();
 
 void
 initlog(int dev)
@@ -136,6 +126,7 @@ void
 begin_op(void)
 {
   acquire(&log.lock);
+  // 로그가 커밋중이지 않을때만 진행
   while(1){
     if(log.committing){
       sleep(&log, &log.lock);
@@ -147,12 +138,12 @@ begin_op(void)
 }
 
 // called at the end of each FS system call.
-// commits if this was the last outstanding operation.
 void
 end_op(void)
-{
+{ 
+  //파일시스템 연산이 끝나면 대기중인 연산 진행
   acquire(&log.lock);
-  wakeup(&log);
+  wakeup(&log); 
   release(&log.lock);
 }
 
@@ -197,23 +188,39 @@ log_write(struct buf *b)
 int
 sync(void)
 {
+  int temp = 0;
+
   acquire(&log.lock);
+
+  if (log.committing) { // 이미 commit이 진행중이면
+    release(&log.lock);
+    return -1; // 실패로 간주
+  }
+
   log.committing = 1;
   release(&log.lock);
-  int temp = 0;
-  logDirtyBuffer();
-  
-  write_log();     // Write modified blocks from cache to log
-  write_head();    // Write header to disk -- the real commit
 
-  install_trans(); // Now install writes to home locations
+  temp = logDirtyBuffer();
+  
+  // Dirty buffer가 없으면 이미 sync되어 있다는 것이므로 성공으로 간주
+  if (temp == 0) {
+    acquire(&log.lock);
+    log.committing = 0;
+    release(&log.lock);
+    return 0; 
+  }
+  
+  write_log();    
+  write_head();    
+  install_trans();
+  
   temp = log.lh.n;
   log.lh.n = 0;
-  write_head();    // Erase the transaction from the log
+  write_head();  
 
   acquire(&log.lock);
   log.committing = 0;
   release(&log.lock);
-  if(temp == 0) return -1;
-  else return temp;
+  
+  return temp; // 동기화한 블록 수를 반환
 }

@@ -288,38 +288,43 @@ sys_symlink(void)
   char *link, *target;
   struct inode *dp, *ip;
 
+  // 문자열 형태의 target과 link에 대한 주소를 가져옴
   if(argstr(0, &target) < 0 || argstr(1, &link) < 0)
     return -1;
 
   begin_op();
+  // target의 inode를 가져온다.
   if((ip = namei(target)) == 0){
     end_op();
     return -1;
   }
 
   ilock(ip);
+  // 만약 target이 디렉토리라면 에러를 반환한다.
   if(ip->type == T_DIR){
     iunlockput(ip);
     end_op();
     return -1;
   }
 
-  ip->nlink++;
+  // inode의 상태를 디스크에 업데이트한다.
   iupdate(ip);
   iunlock(ip);
 
+  // link 이름으로 새 inode를 생성하고, 이 inode는 T_SYMLINK 타입이다.
   if((dp = create(link, T_SYMLINK, 0, 0)) == 0) 
     return -1;
   
+  // 생성된 inode의 addrs 부분에 target의 경로를 복사한다.
   memmove((char*)(dp->addrs), target, strlen(target));
   
+  // inode의 상태를 디스크에 업데이트한다.
   iupdate(dp);
   iunlock(dp);
 
   end_op();
   
   return 0;
-
 }
 
 int

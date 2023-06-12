@@ -374,35 +374,6 @@ iunlockput(struct inode *ip)
 
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
-// static uint
-// bmap(struct inode *ip, uint bn)
-// {
-//   uint addr, *a;
-//   struct buf *bp;
-
-//   if(bn < NDIRECT){
-//     if((addr = ip->addrs[bn]) == 0)
-//       ip->addrs[bn] = addr = balloc(ip->dev);
-//     return addr;
-//   }
-//   bn -= NDIRECT;
-
-//   if(bn < NINDIRECT){
-//     // Load indirect block, allocating if necessary.
-//     if((addr = ip->addrs[NDIRECT]) == 0)
-//       ip->addrs[NDIRECT] = addr = balloc(ip->dev);
-//     bp = bread(ip->dev, addr);
-//     a = (uint*)bp->data;
-//     if((addr = a[bn]) == 0){
-//       a[bn] = addr = balloc(ip->dev);
-//       log_write(bp);
-//     }
-//     brelse(bp);
-//     return addr;
-//   }
-
-//   panic("bmap: out of range");
-// }
 
 static uint
 bmap(struct inode *ip, uint bn)
@@ -433,9 +404,8 @@ bmap(struct inode *ip, uint bn)
   }
 
   bn -= NINDIRECT;
-
+  //double indirect block load, 필요하다면 새로 할당
   if(bn < DINDIRECT){
-    // Load double indirect block, allocating if necessary.
     if((addr = ip->addrs[NDIRECT + 1]) == 0)
       ip->addrs[NDIRECT + 1] = addr = balloc(ip->dev);
     bp = bread(ip->dev, addr);
@@ -458,9 +428,8 @@ bmap(struct inode *ip, uint bn)
   }
 
   bn -= DINDIRECT;
-
+  //triple indirect block load, 필요하다면 새로 할당
   if(bn < TINDIRECT){
-  // Load triple indirect block, allocating if necessary.
   if((addr = ip->addrs[NDIRECT + 2]) == 0)
     ip->addrs[NDIRECT + 2] = addr = balloc(ip->dev);
   bp = bread(ip->dev, addr);
@@ -553,6 +522,9 @@ readi(struct inode *ip, char *dst, uint off, uint n)
 {
   uint tot, m;
   struct buf *bp;
+
+  // 만약 inode가 symbolic link 타입이라면, 
+  // addrs에 저장된 이름으로 실제 inode를 찾는다.
   if(ip->type == T_SYMLINK){
     if((ip = namei((char*)(ip->addrs)))==0) return -1;
   }
@@ -584,6 +556,12 @@ writei(struct inode *ip, char *src, uint off, uint n)
 {
   uint tot, m;
   struct buf *bp;
+
+   // 만약 inode가 symbolic link 타입이라면, 
+  // addrs에 저장된 이름으로 실제 inode를 찾는다.
+  if(ip->type == T_SYMLINK){
+    if((ip = namei((char*)(ip->addrs)))==0) return -1;
+  }
   
   if(ip->type == T_DEV){
     if(ip->major < 0 || ip->major >= NDEV || !devsw[ip->major].write)
